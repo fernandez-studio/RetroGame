@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>OK FERNAND</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'Courier New', monospace;
+    }
+    .title {
+      color: #FFD700;
+      font-size: 36px;
+      letter-spacing: 12px;
+      margin-bottom: 18px;
+      text-shadow: 4px 4px 0px #7A3A00;
+    }
+    canvas {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+  </style>
+</head>
+<body>
+  <div class="title">* OK FERNAND *</div>
+  <canvas id="game" width="1440" height="960"></canvas>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx    = canvas.getContext('2d');
+    const S = 6; // 1 game pixel = 6 screen pixels  →  arena is 240 × 160 game pixels
+
+    // ── Primitives ───────────────────────────────────────────────────────────────
+
+    function dot(gx, gy, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(gx * S, gy * S, S, S);
+    }
+
+    function grect(gx, gy, gw, gh, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(gx * S, gy * S, gw * S, gh * S);
+    }
+
+    function drawSprite(sprite, palette, gx, gy, flipX = false) {
+      const rows = sprite.length;
+      const cols = sprite[0].length;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const key = sprite[r][flipX ? (cols - 1 - c) : c];
+          if (key !== null && palette[key]) {
+            dot(gx + c, gy + r, palette[key]);
+          }
+        }
+      }
+    }
+
+    // ── Sprites ──────────────────────────────────────────────────────────────────
+
+    // Cowboy facing RIGHT — 9 × 14
+    const COWBOY = [
+      [ null, 'HT',  'HT',  'HT',  'HT',  'HT',  null,  null,  null ],
+      [ 'HT', 'HT',  'HT',  'HT',  'HT',  'HT',  'HT',  null,  null ],
+      [ null,  null, 'SK',  'SK',  'SK',   null,  null,  null,  null ],
+      [ null, 'SK',  'SK',  'SK',  'SK',  'SK',   null,  null,  null ],
+      [ null, 'SK',  'SK',  'SK',  'SK',  'SK',   null,  null,  null ],
+      [ null, 'SH',  'SH',  'VS',  'SH',  'SH',   null,  null,  null ],
+      [ 'SH', 'SH',  'SH',  'VS',  'VS',  'SH',  'SH',   null,  null ],
+      [ 'SH', 'SH',  'SH',  'VS',  'VS',  'SH',  'SH',  'GN',   null ],
+      [ null, 'SH',  'BL',  'BL',  'BL',  'SH',   null, 'GN',   null ],
+      [ null, 'PN',  'PN',  'PN',  'PN',  'PN',   null,  null,  null ],
+      [ null, 'PN',  'PN',   null, 'PN',  'PN',   null,  null,  null ],
+      [ null, 'PN',  'PN',   null, 'PN',  'PN',   null,  null,  null ],
+      [ null, 'PN',  'PN',   null, 'PN',  'PN',   null,  null,  null ],
+      [ 'BT', 'BT',  'BT',   null, 'BT',  'BT',  'BT',   null,  null ],
+    ];
+
+    // Large thick cactus — 13 × 24
+    // Two-pixel-wide trunk (cols 5-6), thick arms, wide spreading base
+    const CACTUS = [
+    //   0     1     2     3     4     5     6     7     8     9    10    11    12
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], //  0
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], //  1
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], //  2
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], //  3
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], //  4
+      ['CL', null, null, null, null, 'CK', 'CK', null, null, null, null, null, 'CR'], //  5 arm tips
+      ['CL', null, null, null, null, 'CK', 'CK', null, null, null, null, null, 'CR'], //  6
+      ['CL', null, null, null, null, 'CK', 'CK', null, null, null, null, null, 'CR'], //  7
+      ['CL', 'CL', null, null, null, 'CK', 'CK', null, null, null, null, 'CR', 'CR'], //  8 arms widen
+      ['CL', 'CL', 'CL', null, null, 'CK', 'CK', null, null, null, 'CR', 'CR', 'CR'], //  9
+      ['CL', 'CL', 'CL', 'CL', null, 'CK', 'CK', null, 'CR', 'CR', 'CR', 'CR', 'CR'], // 10
+      ['CL', 'CL', 'CL', 'CL', 'CL', 'CK', 'CK', 'CR', 'CR', 'CR', 'CR', 'CR', 'CR'], // 11 arms join
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 12
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 13
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 14
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 15
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 16
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 17
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 18
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 19
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 20
+      [null, null, null, null, 'CB', 'CB', 'CB', 'CB', null, null, null, null, null], // 21 base spreads
+      [null, null, null, 'CB', 'CB', 'CB', 'CB', 'CB', 'CB', null, null, null, null], // 22
+      [null, null, 'CB', 'CB', 'CB', 'CB', 'CB', 'CB', 'CB', 'CB', null, null, null], // 23
+    ];
+
+    // Dynamite pack — 7 × 10
+    // Three red sticks bundled, brown rope band, sparking fuse on top
+    const DYNAMITE = [
+      [ null,  null, 'FU',  'FU',  null,  null,  null ],  //  0 fuse
+      [ null, 'RD',  'RD',  'RD',  'RD',  null,  null ],  //  1 top caps
+      [ 'RD', 'RD',  'DK',  'RD',  'DK',  'RD',  null ],  //  2 three sticks
+      [ 'RD', 'RD',  'DK',  'RD',  'DK',  'RD',  null ],  //  3
+      [ 'RD', 'BN',  'BN',  'BN',  'BN',  'RD',  null ],  //  4 rope band
+      [ 'RD', 'RD',  'DK',  'RD',  'DK',  'RD',  null ],  //  5
+      [ 'RD', 'RD',  'DK',  'RD',  'DK',  'RD',  null ],  //  6
+      [ 'RD', 'RD',  'DK',  'RD',  'DK',  'RD',  null ],  //  7
+      [ 'RD', 'RD',  'DK',  'RD',  'DK',  'RD',  null ],  //  8
+      [ null, 'RD',  'RD',  'RD',  'RD',  null,  null ],  //  9 bottom caps
+    ];
+
+    // Wide-shot power-up: vertical bullet — 5 × 11
+    const BULLET_PU = [
+    //   0     1     2     3     4
+      [ null,  null, 'SM',  null,  null ],  //  0 half-circle top (1px)
+      [ null,  'SM', 'SM', 'SM',  null ],  //  1 half-circle mid (3px)
+      [ 'SM',  'SM', 'SM', 'SM', 'SM'  ],  //  2 half-circle base (5px) — full width
+      [ 'SM',  'SM', 'SM', 'SM', 'SM'  ],  //  3 casing
+      [ 'SM',  'SM', 'SM', 'SM', 'SM'  ],  //  4 casing
+      [ 'SM',  'SM', 'SM', 'SM', 'SM'  ],  //  5 casing
+      [ 'SM',  'SM', 'SM', 'SM', 'SM'  ],  //  6 casing
+      [ 'SM',  'SM', 'SM', 'SM', 'SM'  ],  //  7 casing
+      [ 'SM',  'SM', 'SM', 'SM', 'SM'  ],  //  8 casing
+      [ null,  'SD', 'SD', 'SD',  null ],  //  9 extractor groove
+      [ 'SR',  'SR', 'SR', 'SR', 'SR'  ],  // 10 rim
+    ];
+
+    // Tommy gun — 11 × 7  (horizontal, barrel pointing right)
+    // Recognisable by the round drum magazine underneath
+    const TOMMY = [
+      [ null, 'BRL', 'BRL', 'BRL', 'BRL', 'BRL', 'BRL', 'BRL', 'BRL', null,  null ],  // 0 barrel
+      [ null, 'GUN', 'GUN', 'GUN', 'GUN', 'GUN', 'GUN', 'GUN', 'GUN', 'BRL', null ],  // 1 receiver
+      ['STK', 'GUN', 'GUN', 'GUN', 'GUN', 'GUN', 'GUN', 'GUN',  null,  null,  null ],  // 2 stock + body
+      ['STK', 'STK', 'TRG',  null,  null,  null,  null,  null,  null,  null,  null ],  // 3 grip + trigger
+      [ null,  null,  null,  null, 'DRM', 'DRM', 'DRM', 'DRM', 'DRM',  null,  null ],  // 4 drum
+      [ null,  null,  null,  null, 'DRM', 'DRM', 'DRM', 'DRM', 'DRM',  null,  null ],  // 5 drum
+      [ null,  null,  null,  null, 'DRM', 'DRM', 'DRM', 'DRM', 'DRM',  null,  null ],  // 6 drum
+    ];
+
+    // Healing potion — round-bottom flask — 7 × 13
+    // Golden cork, narrow neck, wide round body, glowing green liquid, root base
+    const POTION = [
+    //   0     1     2     3     4     5     6
+      [ null,  null, 'CK', 'CY',  null,  null,  null ],  //  0 cork
+      [ null,  null, 'NK', 'NK',  null,  null,  null ],  //  1 neck narrow
+      [ null,  null, 'NK', 'NK',  null,  null,  null ],  //  2 neck
+      [ null,  'GL', 'GL', 'GL', 'GL',   null,  null ],  //  3 shoulder
+      [ null,  'GL', 'GH', 'GR', 'GL',   null,  null ],  //  4 body top — highlight left
+      [ 'GL',  'GL', 'GR', 'GR', 'GR',  'GL',  null ],  //  5 body widens
+      [ 'GL',  'GR', 'GR', 'GR', 'GR',  'GR',  'GL' ],  //  6 widest — full glow
+      [ 'GL',  'GR', 'GR', 'GR', 'GR',  'GR',  'GL' ],  //  7
+      [ 'GL',  'GL', 'GR', 'GR', 'GR',  'GL',  null ],  //  8 body narrows
+      [ null,  'GL', 'GL', 'GR', 'GL',   null,  null ],  //  9 round bottom
+      [ null,  null, 'GL', 'GL',  null,  null,  null ],  // 10 base
+      [ null,  'RT', 'RT', 'RT', 'RT',   null,  null ],  // 11 root wrap
+      [ null,  'RT',  null,  null, 'RT',  null,  null ],  // 12 root feet
+    ];
+
+    // ── Palettes ─────────────────────────────────────────────────────────────────
+
+    const PAL_P1 = {
+      HT: '#3D1C06', SK: '#F4C27F', SH: '#BB2020',
+      VS: '#1C0A00', BL: '#3A1E08', GN: '#AAAAAA',
+      PN: '#5A4030', BT: '#1A0800',
+    };
+
+    const PAL_P2 = {
+      HT: '#111111', SK: '#F4C27F', SH: '#1A1AB0',
+      VS: '#0A0A22', BL: '#28183A', GN: '#CCCCCC',
+      PN: '#28284A', BT: '#080818',
+    };
+
+    const PAL_CACTUS = {
+      CK: '#2A8C2A', CL: '#1A6C1A', CR: '#1A6C1A', CB: '#165516',
+    };
+
+    const PAL_DYNAMITE = {
+      FU: '#DDCC00',  // fuse — yellow spark
+      RD: '#CC2222',  // red dynamite stick
+      DK: '#881111',  // dark groove between sticks
+      BN: '#8B5428',  // brown rope band
+    };
+
+    const PAL_BULLET = {
+      SM: '#AAAAAA',  // silver body
+      SD: '#666666',  // extractor groove
+      SR: '#888888',  // rim
+    };
+
+    const PAL_TOMMY = {
+      BRL: '#111111',
+      GUN: '#1A1A1A',
+      STK: '#111111',
+      TRG: '#000000',
+      DRM: '#0D0D0D',
+    };
+
+    const PAL_POTION = {
+      CK: '#8B6820',  // cork dark
+      CY: '#D4AA30',  // cork highlight
+      NK: '#A8CCA0',  // neck — faint green glass
+      GL: '#70B890',  // bottle glass — green tinted
+      GH: '#AAFFCC',  // liquid highlight (bright spot)
+      GR: '#22CC44',  // glowing green liquid
+      RT: '#5A3A10',  // root / vine wrap at base
+    };
+
+    // ── Teleportation circle ─────────────────────────────────────────────────────
+    // Concentric pixel rings — muted/dim teal-blue, unobtrusive.
+
+    function drawTeleport(gcx, gcy) {
+      for (let dy = -9; dy <= 9; dy++) {
+        for (let dx = -9; dx <= 9; dx++) {
+          const d2 = dx * dx + dy * dy;
+          if      (d2 >= 64 && d2 <= 81) dot(gcx + dx, gcy + dy, '#3E788C'); // outer ring
+          else if (d2 >= 36 && d2 <= 49) dot(gcx + dx, gcy + dy, '#34708A'); // mid ring
+          else if (d2 >= 16 && d2 <= 25) dot(gcx + dx, gcy + dy, '#5A96A8'); // inner ring
+          else if (d2 <  16)             dot(gcx + dx, gcy + dy, '#4E869B'); // soft centre
+        }
+      }
+    }
+
+    // Pixel-art digit "3" — 3 × 5
+    function drawDigit3(gx, gy, color) {
+      dot(gx,   gy,   color); dot(gx+1, gy,   color); dot(gx+2, gy,   color); // ###
+                                                        dot(gx+2, gy+1, color); //   #
+                               dot(gx+1, gy+2, color); dot(gx+2, gy+2, color); //  ##
+                                                        dot(gx+2, gy+3, color); //   #
+      dot(gx,   gy+4, color); dot(gx+1, gy+4, color); dot(gx+2, gy+4, color); // ###
+    }
+
+    // Wide-shot power-up: vertical bullet + "3" label to the right
+    function drawWideShotPU(gx, gy) {
+      drawSprite(BULLET_PU, PAL_BULLET, gx, gy);
+      drawDigit3(gx + 6, gy + 3, '#FFEE44');
+    }
+
+    // ── Arena ────────────────────────────────────────────────────────────────────
+
+    function drawArena() {
+      const W = 240, H = 160;
+
+      // Flat arena floor — top-down, no horizon, no ground plane
+      grect(0, 0, W, H, '#8B6B20');
+
+      // Subtle scatter texture
+      for (let x = 4; x < W - 4; x += 4) {
+        for (let y = 4; y < H - 4; y += 4) {
+          if ((x * 11 + y *  7) % 23 < 2) dot(x, y, '#7A5C18');
+          if ((x *  5 + y * 13) % 29 < 1) dot(x, y, '#9A7A28');
+        }
+      }
+
+      // Outer boundary fence
+      const PLANK = '#8B5C28', RAIL = '#6B4418', POST = '#3B2208';
+
+      grect(0,     0, W, 3, PLANK); grect(0, 1, W, 1, RAIL); grect(0, 2, W, 1, POST); // top
+      grect(0, H-3, W, 3, PLANK); grect(0, H-2, W, 1, RAIL); grect(0, H-1, W, 1, POST); // bottom
+      grect(0,     0, 3, H, PLANK); grect(1, 0, 1, H, RAIL); grect(2, 0, 1, H, POST); // left
+      grect(W-3,   0, 3, H, PLANK); grect(W-2, 0, 1, H, RAIL); grect(W-1, 0, 1, H, POST); // right
+
+      for (let x = 0; x <= W - 3; x += 20) {
+        grect(x, 0, 3, 4, POST); dot(x, 0, PLANK); dot(x+1, 0, PLANK);
+        grect(x, H-4, 3, 4, POST); dot(x, H-1, PLANK); dot(x+1, H-1, PLANK);
+      }
+      for (let y = 0; y <= H - 3; y += 20) {
+        grect(0, y, 4, 3, POST);
+        grect(W-4, y, 4, 3, POST);
+      }
+    }
+
+    // ── Main render ───────────────────────────────────────────────────────────────
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawArena();
+
+      // Teleportation circles — tucked tight into lower-left and upper-right corners
+      drawTeleport(13, 147);   // lower-left
+      drawTeleport(227, 13);   // upper-right
+
+      // Cactus — 13×24, centred in arena
+      drawSprite(CACTUS, PAL_CACTUS, 114, 68);
+
+      // Dynamite packs (mines)
+      drawSprite(DYNAMITE, PAL_DYNAMITE,  62, 14);   // upper-left
+      drawSprite(DYNAMITE, PAL_DYNAMITE, 163, 14);   // upper-right
+      drawSprite(DYNAMITE, PAL_DYNAMITE, 108, 124);  // lower-centre
+
+      // Tommy gun power-ups
+      drawSprite(TOMMY, PAL_TOMMY,  48, 111);   // lower-left
+      drawSprite(TOMMY, PAL_TOMMY, 155, 111);   // lower-right
+      drawSprite(TOMMY, PAL_TOMMY,  88,  42);   // upper, left of cactus
+
+      // Wide-shot power-ups (bullet + "3")
+      drawWideShotPU(150, 42);   // upper-right of centre
+      drawWideShotPU( 72, 95);   // left-centre
+
+      // Healing potion
+      drawSprite(POTION, PAL_POTION, 24, 18);  // upper-left area
+
+      // Cowboys — vertically centred
+      drawSprite(COWBOY, PAL_P1,  40, 73);          // Player 1, left side
+      drawSprite(COWBOY, PAL_P2, 192, 73, true);    // AI, right side, mirrored
+    }
+
+    draw();
+  </script>
+</body>
+</html>
