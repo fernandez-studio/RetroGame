@@ -27,9 +27,13 @@
   </style>
 </head>
 <body>
-  <div style="display:flex;align-items:center;width:1488px;margin-bottom:18px">
-    <div id="ammo-meter" style="display:flex;flex-direction:row;align-items:flex-end;gap:5px;margin-left:38px"></div>
-    <div class="title" style="flex:1;text-align:center">* OK FERNAND *</div>
+  <div id="start-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.88);display:flex;align-items:center;justify-content:center;z-index:100;cursor:pointer">
+    <div style="color:#FFD700;font-family:'Courier New',monospace;font-size:28px;letter-spacing:8px;text-shadow:3px 3px 0 #7A3A00">CLICK TO START</div>
+  </div>
+
+  <div style="position:relative;width:1488px;margin-bottom:18px;height:44px">
+    <div id="ammo-meter" style="display:flex;flex-direction:row;align-items:flex-end;gap:5px;margin-left:38px;height:100%"></div>
+    <div class="title" style="position:absolute;left:38px;width:1440px;text-align:center;top:50%;transform:translateY(-50%)">* OK FERNAND *</div>
   </div>
   <div style="display:flex;align-items:center;gap:16px">
     <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
@@ -427,8 +431,12 @@
     ];
 
     const BULLET_SPEED   = 2.5;  // game pixels per frame
-    const BULLET_RANGE   = 128;  // ~53% of arena width (240)
-    const FIRE_COOLDOWN  = 30;   // frames between shots
+    const BULLET_RANGE      = 128;  // ~53% of arena width (240)
+    const LONG_BULLET_RANGE = 480;  // 2× screen width
+    const FIRE_COOLDOWN     = 30;   // frames between shots
+    const SPLIT_DIVERGE     = Math.PI / 9;  // 20° spread on ricochet split
+    const COS_DIV = Math.cos(SPLIT_DIVERGE);
+    const SIN_DIV = Math.sin(SPLIT_DIVERGE);
 
     const TOMMY_SHOT_COOLDOWN  = 5;   // frames between shots within a burst
     const TOMMY_BURST_COOLDOWN = 28;  // frames between bursts
@@ -436,14 +444,27 @@
     const bullets = [];
     let fireCooldown = 0;
 
-    let weapon    = 'default';  // 'default' | 'tommy'
+    let weapon    = 'default';  // 'default' | 'tommy' | 'wide' | 'long'
     let ammoBoxes = 8;
     let burstShot = 0;
+
+    const COS30 = Math.cos(Math.PI / 6);
+    const SIN30 = Math.sin(Math.PI / 6);
 
     const tommyPickups = [
       { x: 48,  y: 111 },
       { x: 155, y: 111 },
       { x: 88,  y: 42  },
+    ];
+
+    const widePickups = [
+      { x: 150, y: 42 },
+      { x:  72, y: 95 },
+    ];
+
+    const longPickups = [
+      { x: 190, y: 95  },
+      { x:  30, y: 110 },
     ];
 
     const AI_STAND_Y     = 73;
@@ -473,7 +494,7 @@
       osc.type = 'square';
       osc.frequency.setValueAtTime(700, audioCtx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 0.12);
-      gain.gain.setValueAtTime(0.125, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
       osc.start();
       osc.stop(audioCtx.currentTime + 0.12);
@@ -521,6 +542,20 @@
       osc.stop(audioCtx.currentTime + 0.3);
     }
 
+    function playDing() {
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1400, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(900, audioCtx.currentTime + 0.18);
+      gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.18);
+    }
+
     function playTeleportIn() {
       const osc  = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
@@ -539,8 +574,21 @@
     // ── Input ────────────────────────────────────────────────────────────────────
 
     const keys = {};
-    window.addEventListener('keydown', e => { keys[e.key] = true;  audioCtx.resume(); });
+    window.addEventListener('keydown', e => { keys[e.key] = true; });
     window.addEventListener('keyup',   e => { keys[e.key] = false; });
+
+    const startOverlay = document.getElementById('start-overlay');
+    startOverlay.addEventListener('click', () => {
+      audioCtx.resume();
+      startOverlay.style.display = 'none';
+    });
+
+    const STICK_DEAD = 0.15;
+    function getGamepad() {
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (const pad of pads) if (pad) return pad;
+      return null;
+    }
 
     // ── Update ───────────────────────────────────────────────────────────────────
 
@@ -571,22 +619,28 @@
       }
 
       if (player.tpState === 'idle') {
+        const gp = getGamepad();
+        if (gp && gp.buttons.some(b => b.pressed)) audioCtx.resume();
+
         // ── Movement ──────────────────────────────────────────────────────────────
         let dx = 0, dy = 0;
         if (keys['w'] || keys['W']) dy -= 1;
         if (keys['s'] || keys['S']) dy += 1;
         if (keys['a'] || keys['A']) dx -= 1;
         if (keys['d'] || keys['D']) dx += 1;
+        if (gp) {
+          const ax = gp.axes[0], ay = gp.axes[1];
+          if (Math.abs(ax) > STICK_DEAD) dx = Math.max(-1, Math.min(1, dx + ax));
+          if (Math.abs(ay) > STICK_DEAD) dy = Math.max(-1, Math.min(1, dy + ay));
+        }
 
         const moving = dx !== 0 || dy !== 0;
 
         if (moving) {
-          if (dx !== 0 && dy !== 0) {
-            const inv = SPEED / Math.SQRT2;
-            dx *= inv; dy *= inv;
-          } else {
-            dx *= SPEED; dy *= SPEED;
-          }
+          const len = Math.sqrt(dx * dx + dy * dy);
+          const spd = SPEED / Math.SQRT2;
+          dx = (dx / len) * spd;
+          dy = (dy / len) * spd;
 
           const newX = Math.max(3, Math.min(228, player.x + dx));
           const newY = Math.max(3, Math.min(143, player.y + dy));
@@ -641,34 +695,93 @@
           }
         }
 
+        // ── Wide-shot pickup ─────────────────────────────────────────────────────
+        for (let i = widePickups.length - 1; i >= 0; i--) {
+          const wp = widePickups[i];
+          if (player.x + 8 > wp.x && player.x + 1 < wp.x + 10 &&
+              player.y + 5 > wp.y && player.y + 13 < wp.y + 14) {
+            widePickups.splice(i, 1);
+            weapon    = 'wide';
+            ammoBoxes = 8;
+            updateAmmoMeter();
+            break;
+          }
+        }
+
+        // ── Long-shot pickup ──────────────────────────────────────────────────────
+        for (let i = longPickups.length - 1; i >= 0; i--) {
+          const lp = longPickups[i];
+          if (player.x + 8 > lp.x && player.x + 1 < lp.x + 10 &&
+              player.y + 5 > lp.y && player.y + 13 < lp.y + 14) {
+            longPickups.splice(i, 1);
+            weapon    = 'long';
+            ammoBoxes = 8;
+            updateAmmoMeter();
+            break;
+          }
+        }
+
         // ── Shooting ──────────────────────────────────────────────────────────────
         let sx = 0, sy = 0;
         if (keys['ArrowUp'])    sy -= 1;
         if (keys['ArrowDown'])  sy += 1;
         if (keys['ArrowLeft'])  sx -= 1;
         if (keys['ArrowRight']) sx += 1;
+        if (gp) {
+          if (gp.buttons[3].pressed) sy -= 1;  // Y = shoot up
+          if (gp.buttons[0].pressed) sy += 1;  // A = shoot down
+          if (gp.buttons[2].pressed) sx -= 1;  // X = shoot left
+          if (gp.buttons[1].pressed) sx += 1;  // B = shoot right
+          sx = Math.max(-1, Math.min(1, sx));
+          sy = Math.max(-1, Math.min(1, sy));
+          const rx = gp.axes[2] ?? 0, ry = gp.axes[3] ?? 0;
+          if (Math.sqrt(rx * rx + ry * ry) > 0.7) {
+            const snapped = Math.round(Math.atan2(ry, rx) / (Math.PI / 4)) * (Math.PI / 4);
+            sx = Math.round(Math.cos(snapped));
+            sy = Math.round(Math.sin(snapped));
+          }
+        }
 
         if (sx !== 0 || sy !== 0) {
           if (fireCooldown <= 0) {
             const len = Math.sqrt(sx * sx + sy * sy);
             const ndx = (sx / len) * BULLET_SPEED;
             const ndy = (sy / len) * BULLET_SPEED;
-            bullets.push({ x: player.x + 4, y: player.y + 7, dx: ndx, dy: ndy, dist: 0 });
-            playPew();
-            if (weapon === 'tommy') {
-              burstShot++;
-              if (burstShot >= 3) {
-                burstShot  = 0;
-                ammoBoxes  = Math.max(0, ammoBoxes - 1);
-                if (ammoBoxes === 0) weapon = 'default';
-                fireCooldown = TOMMY_BURST_COOLDOWN;
-              } else {
-                fireCooldown = TOMMY_SHOT_COOLDOWN;
-              }
+            const bx  = player.x + 4, by = player.y + 7;
+            if (weapon === 'wide') {
+              bullets.push({ x: bx, y: by, dx: ndx, dy: ndy, dist: 0 });
+              bullets.push({ x: bx, y: by,
+                dx: ndx * COS30 - ndy * SIN30, dy: ndx * SIN30 + ndy * COS30, dist: 0 });
+              bullets.push({ x: bx, y: by,
+                dx: ndx * COS30 + ndy * SIN30, dy: -ndx * SIN30 + ndy * COS30, dist: 0 });
+              ammoBoxes = Math.max(0, ammoBoxes - 1);
+              if (ammoBoxes === 0) weapon = 'default';
+              fireCooldown = FIRE_COOLDOWN;
+              updateAmmoMeter();
+            } else if (weapon === 'long') {
+              bullets.push({ x: bx, y: by, dx: ndx, dy: ndy, dist: 0, splits: 2, range: LONG_BULLET_RANGE });
+              ammoBoxes = Math.max(0, ammoBoxes - 1);
+              if (ammoBoxes === 0) weapon = 'default';
+              fireCooldown = FIRE_COOLDOWN;
               updateAmmoMeter();
             } else {
-              fireCooldown = FIRE_COOLDOWN;
+              bullets.push({ x: bx, y: by, dx: ndx, dy: ndy, dist: 0 });
+              if (weapon === 'tommy') {
+                burstShot++;
+                if (burstShot >= 3) {
+                  burstShot  = 0;
+                  ammoBoxes  = Math.max(0, ammoBoxes - 1);
+                  if (ammoBoxes === 0) weapon = 'default';
+                  fireCooldown = TOMMY_BURST_COOLDOWN;
+                } else {
+                  fireCooldown = TOMMY_SHOT_COOLDOWN;
+                }
+                updateAmmoMeter();
+              } else {
+                fireCooldown = FIRE_COOLDOWN;
+              }
             }
+            playPew();
           }
         } else {
           if (weapon === 'tommy') burstShot = 0;
@@ -678,18 +791,44 @@
       }
 
       // ── Move bullets + cactus collision (always runs) ────────────────────────────
+      const splitQueue = [];
       for (let i = bullets.length - 1; i >= 0; i--) {
         const b = bullets[i];
         b.x    += b.dx;
         b.y    += b.dy;
         b.dist += BULLET_SPEED;
 
-        if (b.x < 3)        { b.x = 3;   b.dx = Math.abs(b.dx);  }
-        if (b.x + 2 > 237)  { b.x = 235; b.dx = -Math.abs(b.dx); }
-        if (b.y < 3)        { b.y = 3;   b.dy = Math.abs(b.dy);  }
-        if (b.y + 2 > 157)  { b.y = 155; b.dy = -Math.abs(b.dy); }
+        const bRange = b.range || BULLET_RANGE;
+        if (b.dist >= bRange) { bullets.splice(i, 1); continue; }
 
-        if (b.dist >= BULLET_RANGE) { bullets.splice(i, 1); continue; }
+        if (b.splits > 0) {
+          let rdx = b.dx, rdy = b.dy, wallHit = false;
+          if (b.x < 3)       { b.x = 3;   rdx =  Math.abs(b.dx); wallHit = true; }
+          if (b.x + 2 > 237) { b.x = 235; rdx = -Math.abs(b.dx); wallHit = true; }
+          if (b.y < 3)       { b.y = 3;   rdy =  Math.abs(b.dy); wallHit = true; }
+          if (b.y + 2 > 157) { b.y = 155; rdy = -Math.abs(b.dy); wallHit = true; }
+          if (wallHit) {
+            const spd = Math.sqrt(rdx * rdx + rdy * rdy);
+            const ux = rdx / spd, uy = rdy / spd;
+            const ns = b.splits - 1;
+            const bx = b.x, by = b.y;
+            bullets.splice(i, 1);
+            splitQueue.push({ x: bx, y: by,
+              dx: (ux * COS_DIV - uy * SIN_DIV) * spd,
+              dy: (ux * SIN_DIV + uy * COS_DIV) * spd,
+              dist: 0, splits: ns, range: LONG_BULLET_RANGE });
+            splitQueue.push({ x: bx, y: by,
+              dx: (ux * COS_DIV + uy * SIN_DIV) * spd,
+              dy: (-ux * SIN_DIV + uy * COS_DIV) * spd,
+              dist: 0, splits: ns, range: LONG_BULLET_RANGE });
+            continue;
+          }
+        } else {
+          if (b.x < 3)        { b.x = 3;   b.dx = Math.abs(b.dx);  }
+          if (b.x + 2 > 237)  { b.x = 235; b.dx = -Math.abs(b.dx); }
+          if (b.y < 3)        { b.y = 3;   b.dy = Math.abs(b.dy);  }
+          if (b.y + 2 > 157)  { b.y = 155; b.dy = -Math.abs(b.dy); }
+        }
 
         const bPoints = [[b.x, b.y],[b.x+1, b.y],[b.x, b.y+1],[b.x+1, b.y+1]];
         let hit = false;
@@ -703,6 +842,7 @@
                 CACTUS[hitR][hitC] !== null && ca.damage[hitR][hitC]) {
               applyChunk(ca.damage, hitC, hitR, CHUNK_RADIUS);
               if (isCactusGone(ca.damage)) cacti.splice(j, 1);
+              playDing();
               hit = true;
               break outer;
             }
@@ -730,6 +870,7 @@
           }
         }
       }
+      if (splitQueue.length) bullets.push(...splitQueue);
 
       // ── AI sitting recovery timer ─────────────────────────────────────────────────
       if (ai.state === 'sitting') {
@@ -888,12 +1029,12 @@
         drawSprite(TOMMY, PAL_TOMMY, tp.x, tp.y);
 
       // Wide-shot power-ups
-      drawWideShotPU(150, 42);
-      drawWideShotPU( 72, 95);
+      for (const wp of widePickups)
+        drawWideShotPU(wp.x, wp.y);
 
       // Long-shot power-ups
-      drawLongShotPU(190, 95);
-      drawLongShotPU( 30, 110);
+      for (const lp of longPickups)
+        drawLongShotPU(lp.x, lp.y);
 
       // Healing potion
       drawSprite(POTION, PAL_POTION, 24, 18);
