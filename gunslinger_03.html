@@ -18,7 +18,6 @@
       color: #FFD700;
       font-size: 36px;
       letter-spacing: 12px;
-      margin-bottom: 18px;
       text-shadow: 4px 4px 0px #7A3A00;
     }
     canvas {
@@ -28,8 +27,19 @@
   </style>
 </head>
 <body>
-  <div class="title">* OK FERNAND *</div>
-  <canvas id="game" width="1440" height="960"></canvas>
+  <div style="display:flex;align-items:center;width:1488px;margin-bottom:18px">
+    <div id="ammo-meter" style="display:flex;flex-direction:row;align-items:flex-end;gap:5px;margin-left:38px"></div>
+    <div class="title" style="flex:1;text-align:center">* OK FERNAND *</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+      <div style="color:#FF5555;font-size:11px;letter-spacing:3px;font-family:'Courier New',monospace">HP</div>
+      <div style="width:22px;height:384px;background:#1a1a1a;border:2px solid #555;border-radius:3px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end">
+        <div id="health-fill" style="width:100%;height:100%;background:#CC2222"></div>
+      </div>
+    </div>
+    <canvas id="game" width="1440" height="960"></canvas>
+  </div>
 
   <script>
     const canvas = document.getElementById('game');
@@ -120,6 +130,37 @@
       [ null, 'BT',  'BT',  'BT',  'BT',  'BT',   null,  null,  null ],
     ];
 
+    // AI cowboy — sitting on butt (first hit) 9 × 11
+    // Rows 0-8 are identical to COWBOY — only the legs change to seated position
+    const COWBOY_SIT = [
+      //   0      1      2      3      4      5      6      7      8
+      [ null,  'HT',  'HT',  'HT',  'HT',  'HT',  null,  null,  null ],  //  0 hat
+      [ 'HT',  'HT',  'HT',  'HT',  'HT',  'HT',  'HT',  null,  null ],  //  1 hat brim
+      [ null,  null,  'SK',  'SK',  'SK',   null,  null,  null,  null ],  //  2 face top
+      [ null,  'SK',  'SK',  'SK',  'SK',  'SK',   null,  null,  null ],  //  3 face
+      [ null,  'SK',  'SK',  'SK',  'SK',  'SK',   null,  null,  null ],  //  4 face lower
+      [ null,  'SH',  'SH',  'VS',  'SH',  'SH',   null,  null,  null ],  //  5 shirt
+      [ 'SH',  'SH',  'SH',  'VS',  'VS',  'SH',  'SH',   null,  null ],  //  6 shirt wide
+      [ 'SH',  'SH',  'SH',  'VS',  'VS',  'SH',  'SH',  'GN',   null ],  //  7 gun hand
+      [ null,  'SH',  'BL',  'BL',  'BL',  'SH',   null,  'GN',  null ],  //  8 belt
+      [ null,  'PN',  'PN',  'PN',  'PN',  'PN',  'PN',  'PN',  null ],  //  9 butt + thighs out forward
+      [ null,  null,  null,  null,  'BT',  'BT',  'BT',  'BT',  null ],  // 10 boots at leg-end
+    ];
+
+    // AI cowboy — lying on back, side view, 14 × 7
+    // Width = standing height (14). Height = body depth (7) — full proportions.
+    // Face profile and boot toe at ROW 0 (top = sky). Hat falls behind head in rows 4-6.
+    const COWBOY_DEAD = [
+      //    0      1      2      3      4      5      6      7      8      9     10     11     12     13
+      [ null,  null,  'SK',  'SK',  null,  'SH',  'SH',  'SH',  'SH',  'PN',  'PN',  'PN',  'PN',  'BT' ],  //  0 nose/forehead + chest + pants front + toe up
+      [ null,  'SK',  'SK',  'SK',  'SK',  'SH',  'SH',  'VS',  'BL',  'PN',  'PN',  'PN',  'PN',  'BT' ],  //  1 face wide + shirt + belt + legs + boot
+      [ null,  'SK',  'VS',  'SK',  'SK',  'SH',  'SH',  'VS',  'BL',  'PN',  'PN',  'PN',  'PN',  'BT' ],  //  2 eye + body
+      [ null,  'SK',  'SK',  'SK',  null,  'SH',  'SH',  'SH',  'SH',  'PN',  'PN',  'PN',  'PN',  'BT' ],  //  3 chin + body + legs + heel
+      [ 'HT',  'HT',  null,  null,  null,  'SH',  'SH',  'SH',  'SH',  'PN',  'PN',  'PN',  'PN',  null ],  //  4 hat crown behind head + body back
+      [ 'HT',  'HT',  'HT',  null,  null,  null,  null,  null,  null,  null,  null,  null,  null,  null ],  //  5 hat brim
+      [ null,  'HT',  'HT',  null,  null,  null,  null,  null,  null,  null,  null,  null,  null,  null ],  //  6 hat brim bottom
+    ];
+
     // Large thick cactus — 13 × 24
     // Two-pixel-wide trunk (cols 5-6), thick arms, wide spreading base
     const CACTUS = [
@@ -193,6 +234,15 @@
       [ null,  null,  null,  null, 'DRM', 'DRM', 'DRM', 'DRM', 'DRM',  null,  null ],  // 6 drum
     ];
 
+    // Small tommy gun — in player's hand — 7 × 4, barrel pointing right
+    const TOMMY_HAND = [
+      //   0      1      2      3      4      5      6
+      [ null,  'BRL', 'BRL', 'BRL', 'BRL', 'BRL',  null ],  //  0 barrel
+      [ 'STK', 'GUN', 'GUN', 'GUN', 'GUN',  null,  null ],  //  1 body + stock
+      [ 'STK', 'TRG', 'DRM', 'DRM', 'DRM',  null,  null ],  //  2 grip + drum
+      [ null,   null, 'DRM', 'DRM',  null,  null,  null ],  //  3 drum bottom
+    ];
+
     // Healing potion — round-bottom flask — 7 × 13
     // Golden cork, narrow neck, wide round body, glowing green liquid, root base
     const POTION = [
@@ -212,23 +262,25 @@
       [ null,  'RT',  null,  null, 'RT',  null,  null ],  // 12 root feet
     ];
 
-    // Damsel / princess sprite — 8 × 13, standing side-view facing left
-    // Hair: round dome (1 → 3 → 5 → 3 px tiers), legs unchanged below.
+    // Damsel sprite — 9 × 16, facing left. Chunky orange hair mop, magenta dress, blue collar+shoes.
     const DAMSEL = [
-      //   0      1      2      3      4      5      6      7
-      [ null,  null,  null,  'HY',  null,  null,  null,  null ],  //  0 hair apex (round top)
-      [ null,  null,  'HY',  'HR',  'HY',  null,  null,  null ],  //  1 tier — 3 px
-      [ null,  'HY',  'HR',  'HR',  'HR',  'HY',  null,  null ],  //  2 widest — 5 px
-      [ null,  null,  'HY',  'HR',  'HY',  null,  null,  null ],  //  3 tapers to hairline (3 px)
-      [ 'FC',  'FC',  'FC',  'FC',  null,  null,  null,  null ],  //  4 face
-      [ 'FC',  'EY',  'FC',  'FC',  null,  'HR',  null,  null ],  //  5 eye + small tail
-      [ null,  'PK',  'PK',  'PK',  null,  null,  null,  null ],  //  6 bodice
-      [ 'PK',  'PK',  'PL',  'PL',  'PK',  'PK',  null,  null ],  //  7 skirt (merged tier)
-      [ 'PK',  'PK',  'PK',  'PK',  'PK',  'PK',  null,  null ],  //  8 skirt base
-      [ 'BK',  'PK',  'PK',  'PK',  'PK',  'BK',  null,  null ],  //  9 hem
-      [ null,  'SK',  'SK',  'SK',  'SK',  null,  null,  null ],  // 10 thighs
-      [ null,  'SK',  'SK',  'SK',  'SK',  null,  null,  null ],  // 11 shins
-      [ null,  'BK',  'BK',  'BK',  'BK',  null,  null,  null ],  // 12 shoes
+      //   0      1      2      3      4      5      6      7      8
+      [ null,  null,  null,  'HY',  'HR',  null,  null,  null,  null ],  //  0 hair flyaway top
+      [ null,  null,  'HR',  'HR',  'HR',  'HY',  null,  null,  null ],  //  1 hair builds
+      [ null,  'HY',  'HR',  'HR',  'HR',  'HR',  'HY',  null,  null ],  //  2 hair full mass
+      [ null,  'HR',  'HR',  'HR',  'HR',  'HR',  'HY',  'HR',  null ],  //  3 hair widest + flyaway
+      [ 'FC',  'FC',  'HR',  'HR',  'HR',  null,  null,  'HR',  null ],  //  4 face top + hair beside
+      [ 'FC',  'EY',  'FC',  'HR',  'HR',  null,  null,  null,  null ],  //  5 eye + hair
+      [ 'FC',  'FC',  'FC',  'FC',  null,  null,  null,  null,  null ],  //  6 lower face
+      [ null,  'FC',  'FC',  null,  null,  null,  null,  null,  null ],  //  7 chin
+      [ null,  'BL',  'BL',  'BL',  'BL',  null,  null,  null,  null ],  //  8 blue collar — 4 wide, matches face
+      [ null,  'PL',  'PL',  'PK',  'PK',  null,  null,  null,  null ],  //  9 dress waist — same 4 wide, no protrusion
+      [ null,  'PK',  'PK',  'PK',  'PK',  null,  null,  null,  null ],  // 10 dress
+      [ null,  'PK',  'PK',  'PK',  'PK',  'PK',  null,  null,  null ],  // 11 skirt flares right
+      [ null,  'PK',  'PK',  'PK',  'PK',  'PK',  null,  null,  null ],  // 12 skirt
+      [ 'PK',  'PK',  'PK',  'PK',  'PK',  'PK',  null,  null,  null ],  // 13 skirt flares left too — widest
+      [ 'WH',  'WH',  'WH',  'WH',  'WH',  'WH',  null,  null,  null ],  // 14 white stripe — full skirt width
+      [ 'BL',  'BL',  null,  null,  null,  'BL',  null,  null,  null ],  // 15 blue shoes
     ];
 
     // ── Palettes ─────────────────────────────────────────────────────────────────
@@ -277,14 +329,14 @@
     };
 
     const PAL_DAMSEL = {
-      HR: '#D4A017',  // blonde hair base
-      HY: '#E8C94A',  // blonde highlight
-      FC: '#FAFAFA',  // pale face (arcade style)
+      HR: '#BB2800',  // deep orange-red hair
+      HY: '#EE4400',  // bright orange hair highlight
+      FC: '#F4C27F',  // face/skin — matches cowboy
       EY: '#111111',  // eye
-      PK: '#D790E8',  // pink dress base
-      PL: '#EBC3F5',  // pink dress highlight
-      SK: '#E6B88A',  // legs/skin
-      BK: '#1A1A1A',  // black trim
+      BL: '#2255CC',  // vivid blue collar + shoes
+      PK: '#C8108A',  // hot magenta dress
+      PL: '#F055BB',  // light pink highlight patch
+      WH: '#FFFFFF',  // white stripe
     };
 
     const PAL_POTION = {
@@ -302,11 +354,21 @@
     const SPEED     = 0.9;  // game pixels per frame
     const ANIM_RATE = 6;    // frames between leg animation steps
 
+    const TELEPORT_PORTALS  = [{ x: 13, y: 147 }, { x: 227, y: 13 }];
+    const TELEPORT_FRAMES   = 15;   // frames per fade half
+    const TELEPORT_TRIGGER  = 9;    // radius² — triggers when player centre within 3px
+    const TELEPORT_COOLDOWN = 90;   // frames before re-trigger after arriving
+
     const player = {
       x: 40, y: 73,
       facingLeft: false,
       animFrame: 0,   // 0=idle, 1=walk_A, 2=walk_B
       animTick: 0,
+      tpState:    'idle',  // 'idle' | 'out' | 'in'
+      tpTimer:    0,
+      tpTarget:   0,
+      tpAlpha:    1,
+      tpCooldown: 0,
     };
 
     const COWBOY_FRAMES = [COWBOY, COWBOY_WALK_A, COWBOY_WALK_B];
@@ -368,8 +430,36 @@
     const BULLET_RANGE   = 128;  // ~53% of arena width (240)
     const FIRE_COOLDOWN  = 30;   // frames between shots
 
+    const TOMMY_SHOT_COOLDOWN  = 5;   // frames between shots within a burst
+    const TOMMY_BURST_COOLDOWN = 28;  // frames between bursts
+
     const bullets = [];
     let fireCooldown = 0;
+
+    let weapon    = 'default';  // 'default' | 'tommy'
+    let ammoBoxes = 8;
+    let burstShot = 0;
+
+    const tommyPickups = [
+      { x: 48,  y: 111 },
+      { x: 155, y: 111 },
+      { x: 88,  y: 42  },
+    ];
+
+    const AI_STAND_Y     = 73;
+    const AI_SIT_Y       = 76;   // 87 - 11 rows = 76
+    const AI_DEAD_Y      = 83;   // nudged 3px lower to ground him visually
+    const AI_FADE_FRAMES    = 60;
+    const AI_RECOVER_FRAMES = 180;  // 3 seconds at 60fps
+
+    const ai = {
+      x: 192,
+      y: AI_STAND_Y,
+      state: 'alive',   // 'alive' | 'sitting' | 'dying' | 'dead'
+      fadeAlpha: 1,
+      fadeTick: 0,
+      recoverTick: 0,
+    };
 
     // ── Audio ────────────────────────────────────────────────────────────────────
 
@@ -389,6 +479,63 @@
       osc.stop(audioCtx.currentTime + 0.12);
     }
 
+    function playHit() {
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(220, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(55, audioCtx.currentTime + 0.18);
+      gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.18);
+    }
+
+    function playDeath() {
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(320, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(35, audioCtx.currentTime + 0.9);
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.9);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.9);
+    }
+
+    function playTeleportOut() {
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(480, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.3);
+      gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.3);
+    }
+
+    function playTeleportIn() {
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(960, audioCtx.currentTime + 0.25);
+      gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.18, audioCtx.currentTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.25);
+    }
+
     // ── Input ────────────────────────────────────────────────────────────────────
 
     const keys = {};
@@ -398,75 +545,145 @@
     // ── Update ───────────────────────────────────────────────────────────────────
 
     function update() {
-      let dx = 0, dy = 0;
-      if (keys['w'] || keys['W']) dy -= 1;
-      if (keys['s'] || keys['S']) dy += 1;
-      if (keys['a'] || keys['A']) dx -= 1;
-      if (keys['d'] || keys['D']) dx += 1;
+      // ── Teleport state machine ───────────────────────────────────────────────────
+      if (player.tpCooldown > 0) player.tpCooldown--;
 
-      const moving = dx !== 0 || dy !== 0;
+      if (player.tpState === 'out') {
+        player.tpTimer++;
+        player.tpAlpha = 1 - player.tpTimer / TELEPORT_FRAMES;
+        if (player.tpTimer >= TELEPORT_FRAMES) {
+          const dest  = TELEPORT_PORTALS[player.tpTarget];
+          player.x    = dest.x - 4;
+          player.y    = dest.y - 8;
+          player.tpState = 'in';
+          player.tpTimer = 0;
+          player.tpAlpha = 0;
+          playTeleportIn();
+        }
+      } else if (player.tpState === 'in') {
+        player.tpTimer++;
+        player.tpAlpha = player.tpTimer / TELEPORT_FRAMES;
+        if (player.tpTimer >= TELEPORT_FRAMES) {
+          player.tpState    = 'idle';
+          player.tpAlpha    = 1;
+          player.tpCooldown = TELEPORT_COOLDOWN;
+        }
+      }
 
-      if (moving) {
-        if (dx !== 0 && dy !== 0) {
-          const inv = SPEED / Math.SQRT2;
-          dx *= inv; dy *= inv;
+      if (player.tpState === 'idle') {
+        // ── Movement ──────────────────────────────────────────────────────────────
+        let dx = 0, dy = 0;
+        if (keys['w'] || keys['W']) dy -= 1;
+        if (keys['s'] || keys['S']) dy += 1;
+        if (keys['a'] || keys['A']) dx -= 1;
+        if (keys['d'] || keys['D']) dx += 1;
+
+        const moving = dx !== 0 || dy !== 0;
+
+        if (moving) {
+          if (dx !== 0 && dy !== 0) {
+            const inv = SPEED / Math.SQRT2;
+            dx *= inv; dy *= inv;
+          } else {
+            dx *= SPEED; dy *= SPEED;
+          }
+
+          const newX = Math.max(3, Math.min(228, player.x + dx));
+          const newY = Math.max(3, Math.min(143, player.y + dy));
+          if (!playerCollidesWithCacti(newX, newY)) {
+            player.x = newX; player.y = newY;
+          } else if (!playerCollidesWithCacti(newX, player.y)) {
+            player.x = newX;
+          } else if (!playerCollidesWithCacti(player.x, newY)) {
+            player.y = newY;
+          }
+
+          if (dx < 0) player.facingLeft = true;
+          if (dx > 0) player.facingLeft = false;
+
+          player.animTick++;
+          if (player.animTick >= ANIM_RATE) {
+            player.animTick = 0;
+            player.animFrame = player.animFrame === 1 ? 2 : 1;
+          }
         } else {
-          dx *= SPEED; dy *= SPEED;
+          player.animFrame = 0;
+          player.animTick  = 0;
         }
 
-        const newX = Math.max(3, Math.min(228, player.x + dx));
-        const newY = Math.max(3, Math.min(143, player.y + dy));
-        if (!playerCollidesWithCacti(newX, newY)) {
-          player.x = newX; player.y = newY;
-        } else if (!playerCollidesWithCacti(newX, player.y)) {
-          player.x = newX;
-        } else if (!playerCollidesWithCacti(player.x, newY)) {
-          player.y = newY;
+        // ── Teleport trigger ──────────────────────────────────────────────────────
+        if (player.tpCooldown === 0) {
+          const pcx = player.x + 4, pcy = player.y + 8;
+          for (let i = 0; i < TELEPORT_PORTALS.length; i++) {
+            const p = TELEPORT_PORTALS[i];
+            const ddx = pcx - p.x, ddy = pcy - p.y;
+            if (ddx * ddx + ddy * ddy < TELEPORT_TRIGGER) {
+              player.tpState  = 'out';
+              player.tpTimer  = 0;
+              player.tpTarget = i === 0 ? 1 : 0;
+              playTeleportOut();
+              break;
+            }
+          }
         }
 
-        if (dx < 0) player.facingLeft = true;
-        if (dx > 0) player.facingLeft = false;
-
-        player.animTick++;
-        if (player.animTick >= ANIM_RATE) {
-          player.animTick = 0;
-          player.animFrame = player.animFrame === 1 ? 2 : 1;
+        // ── Tommy gun pickup ──────────────────────────────────────────────────────
+        for (let i = tommyPickups.length - 1; i >= 0; i--) {
+          const tp = tommyPickups[i];
+          if (player.x + 8 > tp.x && player.x + 1 < tp.x + 11 &&
+              player.y + 5 > tp.y && player.y + 13 < tp.y + 14) {
+            tommyPickups.splice(i, 1);
+            weapon    = 'tommy';
+            ammoBoxes = 8;
+            burstShot = 0;
+            updateAmmoMeter();
+            break;
+          }
         }
-      } else {
-        player.animFrame = 0;
-        player.animTick  = 0;
+
+        // ── Shooting ──────────────────────────────────────────────────────────────
+        let sx = 0, sy = 0;
+        if (keys['ArrowUp'])    sy -= 1;
+        if (keys['ArrowDown'])  sy += 1;
+        if (keys['ArrowLeft'])  sx -= 1;
+        if (keys['ArrowRight']) sx += 1;
+
+        if (sx !== 0 || sy !== 0) {
+          if (fireCooldown <= 0) {
+            const len = Math.sqrt(sx * sx + sy * sy);
+            const ndx = (sx / len) * BULLET_SPEED;
+            const ndy = (sy / len) * BULLET_SPEED;
+            bullets.push({ x: player.x + 4, y: player.y + 7, dx: ndx, dy: ndy, dist: 0 });
+            playPew();
+            if (weapon === 'tommy') {
+              burstShot++;
+              if (burstShot >= 3) {
+                burstShot  = 0;
+                ammoBoxes  = Math.max(0, ammoBoxes - 1);
+                if (ammoBoxes === 0) weapon = 'default';
+                fireCooldown = TOMMY_BURST_COOLDOWN;
+              } else {
+                fireCooldown = TOMMY_SHOT_COOLDOWN;
+              }
+              updateAmmoMeter();
+            } else {
+              fireCooldown = FIRE_COOLDOWN;
+            }
+          }
+        } else {
+          if (weapon === 'tommy') burstShot = 0;
+        }
+
+        if (fireCooldown > 0) fireCooldown--;
       }
 
-      // ── Shooting ──────────────────────────────────────────────────────────────
-      let sx = 0, sy = 0;
-      if (keys['ArrowUp'])    sy -= 1;
-      if (keys['ArrowDown'])  sy += 1;
-      if (keys['ArrowLeft'])  sx -= 1;
-      if (keys['ArrowRight']) sx += 1;
-
-      if (sx !== 0 || sy !== 0) {
-        if (fireCooldown <= 0) {
-          // Normalise diagonal
-          const len = Math.sqrt(sx * sx + sy * sy);
-          const ndx = (sx / len) * BULLET_SPEED;
-          const ndy = (sy / len) * BULLET_SPEED;
-          // Spawn from centre of player sprite
-          bullets.push({ x: player.x + 4, y: player.y + 7, dx: ndx, dy: ndy, dist: 0 });
-          fireCooldown = FIRE_COOLDOWN;
-          playPew();
-        }
-      }
-
-      if (fireCooldown > 0) fireCooldown--;
-
-      // ── Move bullets + cactus collision ──────────────────────────────────────
+      // ── Move bullets + cactus collision (always runs) ────────────────────────────
       for (let i = bullets.length - 1; i >= 0; i--) {
         const b = bullets[i];
         b.x    += b.dx;
         b.y    += b.dy;
         b.dist += BULLET_SPEED;
 
-        // Ricochet off walls
         if (b.x < 3)        { b.x = 3;   b.dx = Math.abs(b.dx);  }
         if (b.x + 2 > 237)  { b.x = 235; b.dx = -Math.abs(b.dx); }
         if (b.y < 3)        { b.y = 3;   b.dy = Math.abs(b.dy);  }
@@ -474,7 +691,6 @@
 
         if (b.dist >= BULLET_RANGE) { bullets.splice(i, 1); continue; }
 
-        // Cactus hit detection — check all 4 corners of the bullet
         const bPoints = [[b.x, b.y],[b.x+1, b.y],[b.x, b.y+1],[b.x+1, b.y+1]];
         let hit = false;
         outer: for (let j = cacti.length - 1; j >= 0; j--) {
@@ -492,7 +708,47 @@
             }
           }
         }
-        if (hit) bullets.splice(i, 1);
+        if (hit) { bullets.splice(i, 1); continue; }
+
+        // ── Bullet vs AI ──────────────────────────────────────────────────────────
+        if (ai.state === 'alive' || ai.state === 'sitting') {
+          const aiH = ai.state === 'alive' ? 13 : 8;
+          if (b.x + 2 > ai.x + 1 && b.x < ai.x + 7 &&
+              b.y + 2 > ai.y + 2  && b.y < ai.y + 2 + aiH) {
+            bullets.splice(i, 1);
+            if (ai.state === 'alive') {
+              ai.state       = 'sitting';
+              ai.y           = AI_SIT_Y;
+              ai.recoverTick = 0;
+              playHit();
+            } else {
+              ai.state = 'dying';
+              ai.y     = AI_DEAD_Y;
+              playDeath();
+            }
+            continue;
+          }
+        }
+      }
+
+      // ── AI sitting recovery timer ─────────────────────────────────────────────────
+      if (ai.state === 'sitting') {
+        ai.recoverTick++;
+        if (ai.recoverTick >= AI_RECOVER_FRAMES) {
+          ai.state       = 'alive';
+          ai.y           = AI_STAND_Y;
+          ai.recoverTick = 0;
+        }
+      }
+
+      // ── AI death fade ─────────────────────────────────────────────────────────────
+      if (ai.state === 'dying') {
+        ai.fadeTick++;
+        ai.fadeAlpha = 1 - ai.fadeTick / AI_FADE_FRAMES;
+        if (ai.fadeTick >= AI_FADE_FRAMES) {
+          ai.state     = 'dead';
+          ai.fadeAlpha = 0;
+        }
       }
     }
 
@@ -628,9 +884,8 @@
       drawSprite(DYNAMITE, PAL_DYNAMITE,  70, 124);
 
       // Tommy gun power-ups
-      drawSprite(TOMMY, PAL_TOMMY,  48, 111);
-      drawSprite(TOMMY, PAL_TOMMY, 155, 111);
-      drawSprite(TOMMY, PAL_TOMMY,  88,  42);
+      for (const tp of tommyPickups)
+        drawSprite(TOMMY, PAL_TOMMY, tp.x, tp.y);
 
       // Wide-shot power-ups
       drawWideShotPU(150, 42);
@@ -650,15 +905,29 @@
       }
 
       // Damsel — standing (13px tall; y aligns feet with arena bottom)
-      drawSprite(DAMSEL, PAL_DAMSEL, 223, 73);
+      drawSprite(DAMSEL, PAL_DAMSEL, 223, 71);  // y=71 → feet at 87, matches cowboy baseline
 
-      // AI cowboy — static for now
-      drawSprite(COWBOY, PAL_P2, 192, 73, true);
+      // AI cowboy
+      if (ai.state !== 'dead') {
+        ctx.globalAlpha = ai.fadeAlpha;
+        if      (ai.state === 'alive')   drawSprite(COWBOY,      PAL_P2, ai.x, ai.y, true);
+        else if (ai.state === 'sitting') drawSprite(COWBOY_SIT,  PAL_P2, ai.x, ai.y, true);
+        else                             drawSprite(COWBOY_DEAD, PAL_P2, ai.x, ai.y, true);
+        ctx.globalAlpha = 1;
+      }
 
-      // Player 1 — animated
+      // Player 1 — animated (fades during teleport)
+      ctx.globalAlpha = player.tpAlpha;
       drawSprite(COWBOY_FRAMES[player.animFrame], PAL_P1,
                  Math.round(player.x), Math.round(player.y),
                  player.facingLeft);
+      if (weapon === 'tommy') {
+        const hx = player.facingLeft
+          ? Math.round(player.x) - 5
+          : Math.round(player.x) + 7;
+        drawSprite(TOMMY_HAND, PAL_TOMMY, hx, Math.round(player.y) + 6, player.facingLeft);
+      }
+      ctx.globalAlpha = 1;
 
       // HUD — round label (chunky pixel font, gold drop shadow, dark red)
       const ps = 6;
@@ -668,6 +937,27 @@
       drawPixelText('ROUND 1', sx + 3, sy + 3, '#FFD700', ps);
       drawPixelText('ROUND 1', sx,     sy,     '#8B0000', ps);
     }
+
+    // ── Ammo meter ───────────────────────────────────────────────────────────────
+
+    const ammoMeterEl = document.getElementById('ammo-meter');
+    const ammoBoxEls  = [];
+    for (let i = 0; i < 8; i++) {
+      const box = document.createElement('div');
+      box.style.cssText = 'width:24px;height:44px;background:#555555;border:2px solid #888888;border-radius:3px;';
+      ammoMeterEl.appendChild(box);
+      ammoBoxEls.push(box);
+    }
+
+    function updateAmmoMeter() {
+      const active = weapon !== 'default';
+      for (let i = 0; i < 8; i++) {
+        const filled = i < ammoBoxes;
+        ammoBoxEls[i].style.background    = filled ? (active ? '#CC2222' : '#555555') : '#1a1a1a';
+        ammoBoxEls[i].style.borderColor   = filled ? (active ? '#FF5555' : '#888888') : '#333333';
+      }
+    }
+    updateAmmoMeter();
 
     // ── Game loop ────────────────────────────────────────────────────────────────
 
