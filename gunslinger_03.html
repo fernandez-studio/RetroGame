@@ -482,6 +482,16 @@
       recoverTick: 0,
     };
 
+    const bombs = [
+      { x:  62, y:  14 },
+      { x: 163, y:  14 },
+      { x:  70, y: 124 },
+    ];
+
+    const explosions      = [];
+    const EXPLODE_FRAMES  = 25;
+    const EXPLODE_MAX_LEN = 240;
+
     // ── Audio ────────────────────────────────────────────────────────────────────
 
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -569,6 +579,29 @@
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
       osc.start();
       osc.stop(audioCtx.currentTime + 0.25);
+    }
+
+    function playBoom() {
+      const dur    = 0.7;
+      const bufLen = Math.ceil(audioCtx.sampleRate * dur);
+      const buf    = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+      const data   = buf.getChannelData(0);
+      for (let i = 0; i < bufLen; i++)
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufLen, 1.5);
+      const src  = audioCtx.createBufferSource();
+      src.buffer = buf;
+      const filt = audioCtx.createBiquadFilter();
+      filt.type = 'lowpass';
+      filt.frequency.setValueAtTime(300, audioCtx.currentTime);
+      filt.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + dur);
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(1.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+      src.connect(filt);
+      filt.connect(gain);
+      gain.connect(audioCtx.destination);
+      src.start();
+      src.stop(audioCtx.currentTime + dur);
     }
 
     // ── Input ────────────────────────────────────────────────────────────────────
@@ -850,6 +883,22 @@
         }
         if (hit) { bullets.splice(i, 1); continue; }
 
+        // ── Bullet vs bombs ────────────────────────────────────────────────────────
+        let bombHit = false;
+        for (let j = bombs.length - 1; j >= 0; j--) {
+          const bm = bombs[j];
+          if (b.x + 2 > bm.x && b.x < bm.x + 7 &&
+              b.y + 2 > bm.y && b.y < bm.y + 10) {
+            explosions.push({ cx: bm.x + 3, cy: bm.y + 5, timer: 0, hitAI: false });
+            bombs.splice(j, 1);
+            bullets.splice(i, 1);
+            playBoom();
+            bombHit = true;
+            break;
+          }
+        }
+        if (bombHit) continue;
+
         // ── Bullet vs AI ──────────────────────────────────────────────────────────
         if (ai.state === 'alive' || ai.state === 'sitting') {
           const aiH = ai.state === 'alive' ? 13 : 8;
@@ -890,6 +939,36 @@
           ai.state     = 'dead';
           ai.fadeAlpha = 0;
         }
+      }
+
+      // ── Explosion beam advance + AI kill ──────────────────────────────────────────
+      for (let i = explosions.length - 1; i >= 0; i--) {
+        const ex = explosions[i];
+        ex.timer++;
+        if (!ex.hitAI && (ai.state === 'alive' || ai.state === 'sitting')) {
+          const beamLen = (ex.timer / EXPLODE_FRAMES) * EXPLODE_MAX_LEN;
+          const aiH = ai.state === 'alive' ? 13 : 8;
+          const aiL = ai.x + 1, aiR = ai.x + 7;
+          const aiT = ai.y + 2, aiB = ai.y + 2 + aiH;
+          const beams = [
+            { x1: ex.cx,           y1: ex.cy - 1, x2: ex.cx + beamLen, y2: ex.cy + 2 },
+            { x1: ex.cx - beamLen, y1: ex.cy - 1, x2: ex.cx,           y2: ex.cy + 2 },
+            { x1: ex.cx - 1,       y1: ex.cy,     x2: ex.cx + 2,       y2: ex.cy + beamLen },
+            { x1: ex.cx - 1,       y1: ex.cy - beamLen, x2: ex.cx + 2, y2: ex.cy },
+          ];
+          for (const beam of beams) {
+            if (beam.x1 < aiR && beam.x2 > aiL && beam.y1 < aiB && beam.y2 > aiT) {
+              ex.hitAI = true;
+              if (ai.state === 'alive') {
+                ai.state = 'sitting'; ai.y = AI_SIT_Y; ai.recoverTick = 0; playHit();
+              } else {
+                ai.state = 'dying'; ai.y = AI_DEAD_Y; playDeath();
+              }
+              break;
+            }
+          }
+        }
+        if (ex.timer >= EXPLODE_FRAMES) explosions.splice(i, 1);
       }
     }
 
@@ -1019,10 +1098,9 @@
       for (const ca of cacti)
         drawSprite(CACTUS, PAL_CACTUS, ca.x, ca.y, false, CACTUS_SCALE, ca.damage);
 
-      // Dynamite packs (mines)
-      drawSprite(DYNAMITE, PAL_DYNAMITE,  62,  14);
-      drawSprite(DYNAMITE, PAL_DYNAMITE, 163,  14);
-      drawSprite(DYNAMITE, PAL_DYNAMITE,  70, 124);
+      // Bombs (shoot to detonate)
+      for (const bm of bombs)
+        drawSprite(DYNAMITE, PAL_DYNAMITE, bm.x, bm.y);
 
       // Tommy gun power-ups
       for (const tp of tommyPickups)
@@ -1043,6 +1121,36 @@
       ctx.fillStyle = '#FFFFFF';
       for (const b of bullets) {
         ctx.fillRect(Math.round(b.x) * S, Math.round(b.y) * S, 2 * S, 2 * S);
+      }
+
+      // Explosions — 4-directional beams fading outward
+      for (const ex of explosions) {
+        const t        = ex.timer / EXPLODE_FRAMES;
+        const rawLen   = t * EXPLODE_MAX_LEN;
+        const rightLen = Math.min(rawLen, 237 - ex.cx);
+        const leftLen  = Math.min(rawLen, ex.cx - 3);
+        const downLen  = Math.min(rawLen, 157 - ex.cy);
+        const upLen    = Math.min(rawLen, ex.cy - 3);
+        ctx.globalAlpha = Math.max(0, 1 - t * 0.7);
+        // Outer orange beams (3px wide)
+        ctx.fillStyle = '#FF6600';
+        if (rightLen > 0) ctx.fillRect( ex.cx              * S, (ex.cy - 1) * S, rightLen * S, 3 * S);
+        if (leftLen  > 0) ctx.fillRect((ex.cx - leftLen)   * S, (ex.cy - 1) * S, leftLen  * S, 3 * S);
+        if (downLen  > 0) ctx.fillRect((ex.cx - 1)         * S,  ex.cy       * S, 3 * S, downLen * S);
+        if (upLen    > 0) ctx.fillRect((ex.cx - 1)         * S, (ex.cy - upLen) * S, 3 * S, upLen * S);
+        // Bright yellow core (1px)
+        ctx.fillStyle = '#FFFF88';
+        if (rightLen > 0) ctx.fillRect( ex.cx              * S,  ex.cy       * S, rightLen * S, S);
+        if (leftLen  > 0) ctx.fillRect((ex.cx - leftLen)   * S,  ex.cy       * S, leftLen  * S, S);
+        if (downLen  > 0) ctx.fillRect( ex.cx              * S,  ex.cy       * S, S, downLen * S);
+        if (upLen    > 0) ctx.fillRect( ex.cx              * S, (ex.cy - upLen) * S, S, upLen * S);
+        // Center flash (shrinks over time)
+        const flashR = Math.round((1 - t) * 5);
+        if (flashR > 0) {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect((ex.cx - flashR) * S, (ex.cy - flashR) * S, flashR * 2 * S, flashR * 2 * S);
+        }
+        ctx.globalAlpha = 1;
       }
 
       // Damsel — standing (13px tall; y aligns feet with arena bottom)
