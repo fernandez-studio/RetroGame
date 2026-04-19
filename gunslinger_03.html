@@ -490,7 +490,9 @@
 
     const explosions      = [];
     const EXPLODE_FRAMES  = 25;
-    const EXPLODE_MAX_LEN = 240;
+    const EXPLODE_MAX_LEN = 72;   // 45% of 160 game-pixel arena height
+
+    const smokeParticles = [];
 
     // ── Audio ────────────────────────────────────────────────────────────────────
 
@@ -941,12 +943,13 @@
         }
       }
 
-      // ── Explosion beam advance + AI kill ──────────────────────────────────────────
+      // ── Explosion beam advance + AI kill + smoke spawn ────────────────────────────
       for (let i = explosions.length - 1; i >= 0; i--) {
-        const ex = explosions[i];
+        const ex      = explosions[i];
         ex.timer++;
+        const beamLen = (ex.timer / EXPLODE_FRAMES) * EXPLODE_MAX_LEN;
+
         if (!ex.hitAI && (ai.state === 'alive' || ai.state === 'sitting')) {
-          const beamLen = (ex.timer / EXPLODE_FRAMES) * EXPLODE_MAX_LEN;
           const aiH = ai.state === 'alive' ? 13 : 8;
           const aiL = ai.x + 1, aiR = ai.x + 7;
           const aiT = ai.y + 2, aiB = ai.y + 2 + aiH;
@@ -968,7 +971,37 @@
             }
           }
         }
+
+        // Smoke — 2 particles per beam direction per frame, drifting perpendicular
+        const dirs = [
+          { dx: 1,  dy: 0, len: Math.min(beamLen, 237 - ex.cx) },
+          { dx: -1, dy: 0, len: Math.min(beamLen, ex.cx - 3)   },
+          { dx: 0,  dy: 1, len: Math.min(beamLen, 157 - ex.cy) },
+          { dx: 0,  dy: -1, len: Math.min(beamLen, ex.cy - 3)  },
+        ];
+        for (const d of dirs) {
+          if (d.len <= 0) continue;
+          for (let k = 0; k < 2; k++) {
+            const along = Math.random() * d.len;
+            const side  = Math.random() > 0.5 ? 1 : -1;
+            const px    = ex.cx + d.dx * along + (d.dx === 0 ? side * (1 + Math.random()) : 0);
+            const py    = ex.cy + d.dy * along + (d.dy === 0 ? side * (1 + Math.random()) : 0);
+            const vx    = d.dx === 0 ? side * 0.25 + (Math.random() - 0.5) * 0.1 : (Math.random() - 0.5) * 0.15;
+            const vy    = d.dy === 0 ? side * 0.25 + (Math.random() - 0.5) * 0.1 : (Math.random() - 0.5) * 0.15;
+            smokeParticles.push({ x: px, y: py, vx, vy, life: 20 + Math.random() * 15, maxLife: 35 });
+          }
+        }
+
         if (ex.timer >= EXPLODE_FRAMES) explosions.splice(i, 1);
+      }
+
+      // ── Smoke particle update ──────────────────────────────────────────────────────
+      for (let i = smokeParticles.length - 1; i >= 0; i--) {
+        const p = smokeParticles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life--;
+        if (p.life <= 0) smokeParticles.splice(i, 1);
       }
     }
 
@@ -1122,6 +1155,14 @@
       for (const b of bullets) {
         ctx.fillRect(Math.round(b.x) * S, Math.round(b.y) * S, 2 * S, 2 * S);
       }
+
+      // Smoke particles
+      for (const p of smokeParticles) {
+        ctx.globalAlpha = Math.min((p.life / p.maxLife) * 0.65, 0.65);
+        ctx.fillStyle = p.life / p.maxLife > 0.5 ? '#999999' : '#555555';
+        ctx.fillRect(Math.round(p.x) * S, Math.round(p.y) * S, S, S);
+      }
+      ctx.globalAlpha = 1;
 
       // Explosions — 4-directional beams fading outward
       for (const ex of explosions) {
