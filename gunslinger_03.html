@@ -195,6 +195,24 @@
       [null, null, 'CB', 'CB', 'CB', 'CB', 'CB', 'CB', 'CB', 'CB', null, null, null], // 23
     ];
 
+    // Wooden barrel — 10 × 13  (side view; 3 iron hoops, vertical oak planks)
+    const BARREL = [
+      //   0     1     2     3     4     5     6     7     8     9
+      [ null, 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', null ],  //  0 top hoop
+      [ null, 'TP', 'TP', 'TH', 'TP', 'TP', 'TH', 'TP', 'TP', null ],  //  1 lid
+      [ null, 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', null ],  //  2 planks
+      [ 'HB', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'HB' ],  //  3 upper side hoop
+      [ 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB' ],  //  4 upper band
+      [ 'WL', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL' ],  //  5 planks
+      [ 'WL', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL' ],  //  6 planks
+      [ 'WL', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL' ],  //  7 planks
+      [ 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB' ],  //  8 lower band
+      [ 'HB', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'HB' ],  //  9 lower side hoop
+      [ null, 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', null ],  // 10 planks
+      [ null, 'WL', 'WL', 'WL', 'WL', 'WL', 'WL', 'WL', 'WL', null ],  // 11 bottom
+      [ null, 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', null ],  // 12 bottom hoop
+    ];
+
     // Dynamite pack — 7 × 10
     // Three red sticks bundled, brown rope band, sparking fuse on top
     const DYNAMITE = [
@@ -305,6 +323,14 @@
       CK: '#2A8C2A', CL: '#1A6C1A', CR: '#1A6C1A', CB: '#165516',
     };
 
+    const PAL_BARREL = {
+      WD: '#4A2A08',  // dark oak plank
+      WL: '#7A4A18',  // light oak plank
+      TH: '#9A6520',  // lid highlight
+      TP: '#5C3610',  // lid
+      HB: '#1E0E04',  // iron hoop
+    };
+
     const PAL_DYNAMITE = {
       FU: '#DDCC00',  // fuse — yellow spark
       RD: '#CC2222',  // red dynamite stick
@@ -322,6 +348,12 @@
       SM: '#44BB44',  // green body
       SD: '#227722',  // dark green groove
       SR: '#339933',  // mid green rim
+    };
+
+    const PAL_BULLET_RIC = {
+      SM: '#FF8833',  // orange body
+      SD: '#CC5500',  // dark groove
+      SR: '#DD6622',  // rim
     };
 
     const PAL_TOMMY = {
@@ -365,6 +397,7 @@
 
     const player = {
       x: 40, y: 73,
+      hp: 100,
       facingLeft: false,
       animFrame: 0,   // 0=idle, 1=walk_A, 2=walk_B
       animTick: 0,
@@ -399,6 +432,19 @@
       }
     }
 
+    function initBarrelDamage() {
+      return Array.from({ length: BARREL.length }, () =>
+        new Array(BARREL[0].length).fill(true)
+      );
+    }
+
+    function isBarrelGone(damage) {
+      for (let r = 0; r < BARREL.length; r++)
+        for (let c = 0; c < BARREL[0].length; c++)
+          if (BARREL[r][c] !== null && damage[r][c]) return false;
+      return true;
+    }
+
     function playerCollidesWithCacti(px, py) {
       const p1x = px + 1, p2x = px + 6;
       const p1y = py + 5, p2y = py + 13;
@@ -415,6 +461,25 @@
         }
       }
       return false;
+    }
+
+    function playerCollidesWithBarrels(px, py) {
+      const p1x = px + 1, p2x = px + 6;
+      const p1y = py + 5, p2y = py + 13;
+      for (const ba of barrels) {
+        for (let r = 0; r < BARREL.length; r++) {
+          for (let c = 0; c < BARREL[0].length; c++) {
+            if (BARREL[r][c] === null || !ba.damage[r][c]) continue;
+            if (p1x < ba.x + c + 1 && p2x > ba.x + c &&
+                p1y < ba.y + r + 1 && p2y > ba.y + r) return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function playerCollidesWithObstacles(px, py) {
+      return playerCollidesWithCacti(px, py) || playerCollidesWithBarrels(px, py);
     }
 
     function isCactusGone(damage) {
@@ -451,36 +516,116 @@
     const COS30 = Math.cos(Math.PI / 6);
     const SIN30 = Math.sin(Math.PI / 6);
 
-    const tommyPickups = [
-      { x: 48,  y: 111 },
-      { x: 155, y: 111 },
-      { x: 88,  y: 42  },
-    ];
+    const tommyPickups = [];
+    const widePickups  = [];
+    const longPickups  = [];
+    const ricPickups   = [];
+    const barrels      = [];
 
-    const widePickups = [
-      { x: 150, y: 42 },
-      { x:  72, y: 95 },
-    ];
+    (function placePickups() {
+      const MARGIN  = 12;
+      const MIN_SEP = 18;
+      const placed  = [];
 
-    const longPickups = [
-      { x: 190, y: 95  },
-      { x:  30, y: 110 },
-    ];
+      const excluded = [
+        { x: 44,  y: 80,  r: 22 },  // player start
+        { x: 214, y: 58,  r: 16 },  // AI above damsel
+        { x: 214, y: 97,  r: 16 },  // AI below damsel
+        { x: 227, y: 79,  r: 16 },  // damsel
+        { x: 13,  y: 147, r: 14 },  // portal SW
+        { x: 227, y: 13,  r: 14 },  // portal NE
+        { x: 118, y: 34,  r: 18 },  // cactus top
+        { x: 125, y: 80,  r: 18 },  // cactus mid
+        { x: 120, y: 126, r: 18 },  // cactus bot
+        { x: 66,  y: 19,  r: 10 },  // bomb 1
+        { x: 167, y: 19,  r: 10 },  // bomb 2
+        { x: 74,  y: 129, r: 10 },  // bomb 3
+      ];
 
-    const AI_STAND_Y     = 73;
-    const AI_SIT_Y       = 76;   // 87 - 11 rows = 76
-    const AI_DEAD_Y      = 83;   // nudged 3px lower to ground him visually
+      function tooClose(x, y) {
+        for (const p of placed)
+          if ((x - p.x) ** 2 + (y - p.y) ** 2 < MIN_SEP * MIN_SEP) return true;
+        for (const e of excluded)
+          if ((x - e.x) ** 2 + (y - e.y) ** 2 < e.r * e.r) return true;
+        return false;
+      }
+
+      function randPos(xMin, xMax) {
+        xMin = xMin ?? MARGIN;
+        xMax = xMax ?? (228 - MARGIN);
+        for (let t = 0; t < 400; t++) {
+          const x = xMin + Math.floor(Math.random() * (xMax - xMin));
+          const y = MARGIN + Math.floor(Math.random() * (150 - MARGIN * 2));
+          if (!tooClose(x, y)) { placed.push({ x, y }); return { x, y }; }
+        }
+        // fallback if somehow no valid spot found
+        const x = xMin + Math.floor(Math.random() * (xMax - xMin));
+        const y = MARGIN + Math.floor(Math.random() * (150 - MARGIN * 2));
+        placed.push({ x, y });
+        return { x, y };
+      }
+
+      barrels.push({ ...randPos(MARGIN, 120),         damage: initBarrelDamage() });  // left half
+      barrels.push({ ...randPos(120, 228 - MARGIN),   damage: initBarrelDamage() });  // right half
+      for (let i = 0; i < 3; i++) tommyPickups.push(randPos());
+      for (let i = 0; i < 3; i++) widePickups.push(randPos());
+      for (let i = 0; i < 3; i++) longPickups.push(randPos());
+      ricPickups.push(randPos());
+    })();
+
     const AI_FADE_FRAMES    = 60;
-    const AI_RECOVER_FRAMES = 180;  // 3 seconds at 60fps
+    const AI_RECOVER_FRAMES = 180;
+    const AI_SPEED          = 0.55;
+    const AI_MIN_DIST       = 28;
+    const RESPAWN_DELAY     = 120;  // 2 seconds at 60 fps
 
-    const ai = {
-      x: 192,
-      y: AI_STAND_Y,
-      state: 'alive',   // 'alive' | 'sitting' | 'dying' | 'dead'
-      fadeAlpha: 1,
-      fadeTick: 0,
-      recoverTick: 0,
-    };
+    const SPAWN_POSITIONS = [
+      { x: 210, y: 51 },  // above damsel
+      { x: 210, y: 90 },  // below damsel
+    ];
+
+    function createAI(x, y) {
+      return {
+        x, y,
+        state:            'alive',
+        fadeAlpha:        1,
+        fadeTick:         0,
+        recoverTick:      0,
+        facingLeft:       true,
+        behaviorState:    'pursue',
+        behaviorTick:     0,
+        behaviorDuration: 120,
+        flankDir:         1,
+        shootCooldown:    60 + Math.floor(Math.random() * 60),
+        stuckTick:        0,
+        deadX:            x,
+        deadY:            y,
+        deadFacing:       true,
+      };
+    }
+
+    function aiHit(a) {
+      if (a.state === 'alive') {
+        a.state       = 'sitting';
+        a.recoverTick = 0;
+        playHit();
+      } else if (a.state === 'sitting') {
+        a.deadX      = a.x;
+        a.deadY      = a.y;
+        a.deadFacing = a.facingLeft;
+        a.state      = 'dying';
+        playDeath();
+        respawnQueue.push({ timer: RESPAWN_DELAY, spawnIdx: Math.floor(Math.random() * 2) });
+      }
+    }
+
+    const ais = [
+      createAI(SPAWN_POSITIONS[0].x, SPAWN_POSITIONS[0].y),
+      createAI(SPAWN_POSITIONS[1].x, SPAWN_POSITIONS[1].y),
+    ];
+
+    const respawnQueue  = [];
+    let   gameActivated = false;
 
     const bombs = [
       { x:  62, y:  14 },
@@ -672,6 +817,7 @@
         const moving = dx !== 0 || dy !== 0;
 
         if (moving) {
+          gameActivated = true;
           const len = Math.sqrt(dx * dx + dy * dy);
           const spd = SPEED / Math.SQRT2;
           dx = (dx / len) * spd;
@@ -679,11 +825,11 @@
 
           const newX = Math.max(3, Math.min(228, player.x + dx));
           const newY = Math.max(3, Math.min(143, player.y + dy));
-          if (!playerCollidesWithCacti(newX, newY)) {
+          if (!playerCollidesWithObstacles(newX, newY)) {
             player.x = newX; player.y = newY;
-          } else if (!playerCollidesWithCacti(newX, player.y)) {
+          } else if (!playerCollidesWithObstacles(newX, player.y)) {
             player.x = newX;
-          } else if (!playerCollidesWithCacti(player.x, newY)) {
+          } else if (!playerCollidesWithObstacles(player.x, newY)) {
             player.y = newY;
           }
 
@@ -743,13 +889,26 @@
           }
         }
 
-        // ── Long-shot pickup ──────────────────────────────────────────────────────
+        // ── Long-shot pickup (L — no ricochet) ───────────────────────────────────
         for (let i = longPickups.length - 1; i >= 0; i--) {
           const lp = longPickups[i];
           if (player.x + 8 > lp.x && player.x + 1 < lp.x + 10 &&
               player.y + 5 > lp.y && player.y + 13 < lp.y + 14) {
             longPickups.splice(i, 1);
             weapon    = 'long';
+            ammoBoxes = 8;
+            updateAmmoMeter();
+            break;
+          }
+        }
+
+        // ── Ricochet pickup (R — long range + splits on wall) ─────────────────────
+        for (let i = ricPickups.length - 1; i >= 0; i--) {
+          const rp = ricPickups[i];
+          if (player.x + 8 > rp.x && player.x + 1 < rp.x + 10 &&
+              player.y + 5 > rp.y && player.y + 13 < rp.y + 14) {
+            ricPickups.splice(i, 1);
+            weapon    = 'ricochet';
             ammoBoxes = 8;
             updateAmmoMeter();
             break;
@@ -779,6 +938,7 @@
 
         if (sx !== 0 || sy !== 0) {
           if (fireCooldown <= 0) {
+            gameActivated = true;
             const len = Math.sqrt(sx * sx + sy * sy);
             const ndx = (sx / len) * BULLET_SPEED;
             const ndy = (sy / len) * BULLET_SPEED;
@@ -794,6 +954,12 @@
               fireCooldown = FIRE_COOLDOWN;
               updateAmmoMeter();
             } else if (weapon === 'long') {
+              bullets.push({ x: bx, y: by, dx: ndx, dy: ndy, dist: 0, range: LONG_BULLET_RANGE });
+              ammoBoxes = Math.max(0, ammoBoxes - 1);
+              if (ammoBoxes === 0) weapon = 'default';
+              fireCooldown = FIRE_COOLDOWN;
+              updateAmmoMeter();
+            } else if (weapon === 'ricochet') {
               bullets.push({ x: bx, y: by, dx: ndx, dy: ndy, dist: 0, splits: 2, range: LONG_BULLET_RANGE });
               ammoBoxes = Math.max(0, ammoBoxes - 1);
               if (ammoBoxes === 0) weapon = 'default';
@@ -823,6 +989,97 @@
         }
 
         if (fireCooldown > 0) fireCooldown--;
+      }
+
+      // ── AI movement + shooting ────────────────────────────────────────────────────
+      if (gameActivated) {
+        for (const a of ais) {
+          if (a.state === 'alive') {
+            a.behaviorTick++;
+            if (a.behaviorTick >= a.behaviorDuration) {
+              a.behaviorTick = 0;
+              const r = Math.random();
+              if (r < 0.35) {
+                a.behaviorState    = 'pursue';
+                a.behaviorDuration = 80 + Math.floor(Math.random() * 80);
+              } else if (r < 0.65) {
+                a.behaviorState    = 'flank';
+                a.flankDir         = Math.random() < 0.5 ? 1 : -1;
+                a.behaviorDuration = 60 + Math.floor(Math.random() * 60);
+              } else {
+                a.behaviorState    = 'strafe';
+                a.flankDir         = Math.random() < 0.5 ? 1 : -1;
+                a.behaviorDuration = 50 + Math.floor(Math.random() * 50);
+              }
+            }
+
+            const pdx  = (player.x + 4) - (a.x + 4);
+            const pdy  = (player.y + 7) - (a.y + 7);
+            const dist = Math.sqrt(pdx * pdx + pdy * pdy) || 1;
+            const ux = pdx / dist, uy = pdy / dist;
+
+            let moveX = 0, moveY = 0;
+            if (a.behaviorState === 'pursue') {
+              if (dist > AI_MIN_DIST) { moveX = ux; moveY = uy; }
+            } else if (a.behaviorState === 'flank') {
+              const px = -uy * a.flankDir, py = ux * a.flankDir;
+              const aw = dist > 60 ? 0.35 : 0;
+              moveX = px * 0.85 + ux * aw;
+              moveY = py * 0.85 + uy * aw;
+              const ml = Math.sqrt(moveX * moveX + moveY * moveY) || 1;
+              moveX /= ml; moveY /= ml;
+            } else {
+              const px = -uy * a.flankDir, py = ux * a.flankDir;
+              moveX = px; moveY = py;
+              if      (dist > 60) { moveX += ux * 0.4; moveY += uy * 0.4; }
+              else if (dist < 30) { moveX -= ux * 0.6; moveY -= uy * 0.6; }
+              const ml = Math.sqrt(moveX * moveX + moveY * moveY) || 1;
+              moveX /= ml; moveY /= ml;
+            }
+
+            const prevX = a.x, prevY = a.y;
+            const nax = Math.max(3, Math.min(228, a.x + moveX * AI_SPEED));
+            const nay = Math.max(3, Math.min(143, a.y + moveY * AI_SPEED));
+            if (!playerCollidesWithCacti(nax, nay) && !playerCollidesWithBarrels(nax, nay)) {
+              a.x = nax; a.y = nay;
+            } else if (!playerCollidesWithCacti(nax, a.y) && !playerCollidesWithBarrels(nax, a.y)) {
+              a.x = nax;
+            } else if (!playerCollidesWithCacti(a.x, nay) && !playerCollidesWithBarrels(a.x, nay)) {
+              a.y = nay;
+            }
+
+            if (a.x === prevX && a.y === prevY && (moveX !== 0 || moveY !== 0)) {
+              if (++a.stuckTick > 15) {
+                a.stuckTick     = 0;
+                a.flankDir      = -a.flankDir;
+                a.behaviorState = 'pursue';
+                a.behaviorTick  = 0;
+              }
+            } else {
+              a.stuckTick = 0;
+            }
+
+            a.facingLeft = pdx < 0;
+          }
+
+          if (a.state === 'alive' || a.state === 'sitting') {
+            a.shootCooldown--;
+            if (a.shootCooldown <= 0) {
+              const pdx  = (player.x + 4) - (a.x + 4);
+              const pdy  = (player.y + 7) - (a.y + 7);
+              const dist = Math.sqrt(pdx * pdx + pdy * pdy) || 1;
+              const angle = Math.atan2(pdy, pdx) + (Math.random() - 0.5) * 0.25;
+              bullets.push({
+                x: a.x + 4, y: a.y + 7,
+                dx: Math.cos(angle) * BULLET_SPEED,
+                dy: Math.sin(angle) * BULLET_SPEED,
+                dist: 0, fromAI: true,
+              });
+              playPew();
+              a.shootCooldown = 70 + Math.floor(Math.random() * 40);
+            }
+          }
+        }
       }
 
       // ── Move bullets + cactus collision (always runs) ────────────────────────────
@@ -859,10 +1116,12 @@
             continue;
           }
         } else {
-          if (b.x < 3)        { b.x = 3;   b.dx = Math.abs(b.dx);  }
-          if (b.x + 2 > 237)  { b.x = 235; b.dx = -Math.abs(b.dx); }
-          if (b.y < 3)        { b.y = 3;   b.dy = Math.abs(b.dy);  }
-          if (b.y + 2 > 157)  { b.y = 155; b.dy = -Math.abs(b.dy); }
+          let wallHit = false;
+          if (b.x < 3)        { b.x = 3;   b.dx =  Math.abs(b.dx); wallHit = true; }
+          if (b.x + 2 > 237)  { b.x = 235; b.dx = -Math.abs(b.dx); wallHit = true; }
+          if (b.y < 3)        { b.y = 3;   b.dy =  Math.abs(b.dy); wallHit = true; }
+          if (b.y + 2 > 157)  { b.y = 155; b.dy = -Math.abs(b.dy); wallHit = true; }
+          if (wallHit && b.noRicochet) { bullets.splice(i, 1); continue; }
         }
 
         const bPoints = [[b.x, b.y],[b.x+1, b.y],[b.x, b.y+1],[b.x+1, b.y+1]];
@@ -885,13 +1144,32 @@
         }
         if (hit) { bullets.splice(i, 1); continue; }
 
+        // ── Bullet vs barrels ──────────────────────────────────────────────────────
+        outer2: for (let j = barrels.length - 1; j >= 0; j--) {
+          const ba = barrels[j];
+          for (const [bpx, bpy] of bPoints) {
+            const hitC = Math.floor(bpx - ba.x);
+            const hitR = Math.floor(bpy - ba.y);
+            if (hitR >= 0 && hitR < BARREL.length &&
+                hitC >= 0 && hitC < BARREL[0].length &&
+                BARREL[hitR][hitC] !== null && ba.damage[hitR][hitC]) {
+              applyChunk(ba.damage, hitC, hitR, CHUNK_RADIUS);
+              if (isBarrelGone(ba.damage)) barrels.splice(j, 1);
+              playDing();
+              hit = true;
+              break outer2;
+            }
+          }
+        }
+        if (hit) { bullets.splice(i, 1); continue; }
+
         // ── Bullet vs bombs ────────────────────────────────────────────────────────
         let bombHit = false;
         for (let j = bombs.length - 1; j >= 0; j--) {
           const bm = bombs[j];
           if (b.x + 2 > bm.x && b.x < bm.x + 7 &&
               b.y + 2 > bm.y && b.y < bm.y + 10) {
-            explosions.push({ cx: bm.x + 3, cy: bm.y + 5, timer: 0, hitAI: false });
+            explosions.push({ cx: bm.x + 3, cy: bm.y + 5, timer: 0, hitAIs: new Set() });
             bombs.splice(j, 1);
             bullets.splice(i, 1);
             playBoom();
@@ -901,45 +1179,57 @@
         }
         if (bombHit) continue;
 
-        // ── Bullet vs AI ──────────────────────────────────────────────────────────
-        if (ai.state === 'alive' || ai.state === 'sitting') {
-          const aiH = ai.state === 'alive' ? 13 : 8;
-          if (b.x + 2 > ai.x + 1 && b.x < ai.x + 7 &&
-              b.y + 2 > ai.y + 2  && b.y < ai.y + 2 + aiH) {
+        // ── Bullet vs player (AI bullets only) ───────────────────────────────────
+        if (b.fromAI && player.tpState === 'idle') {
+          const px = Math.round(player.x), py = Math.round(player.y);
+          if (b.x + 2 > px + 1 && b.x < px + 7 &&
+              b.y + 2 > py + 5  && b.y < py + 14) {
             bullets.splice(i, 1);
-            if (ai.state === 'alive') {
-              ai.state       = 'sitting';
-              ai.y           = AI_SIT_Y;
-              ai.recoverTick = 0;
-              playHit();
-            } else {
-              ai.state = 'dying';
-              ai.y     = AI_DEAD_Y;
-              playDeath();
-            }
+            player.hp = Math.max(0, player.hp - 20);
+            updateHealthBar();
+            playHit();
             continue;
           }
+        }
+
+        // ── Bullet vs AI (player bullets only) ───────────────────────────────────
+        if (!b.fromAI) {
+          let aiHitFlag = false;
+          for (const a of ais) {
+            if (a.state !== 'alive' && a.state !== 'sitting') continue;
+            const aiH = a.state === 'alive' ? 13 : 8;
+            if (b.x + 2 > a.x + 1 && b.x < a.x + 7 &&
+                b.y + 2 > a.y + 2  && b.y < a.y + 2 + aiH) {
+              aiHit(a);
+              aiHitFlag = true;
+              break;
+            }
+          }
+          if (aiHitFlag) { bullets.splice(i, 1); continue; }
         }
       }
       if (splitQueue.length) bullets.push(...splitQueue);
 
-      // ── AI sitting recovery timer ─────────────────────────────────────────────────
-      if (ai.state === 'sitting') {
-        ai.recoverTick++;
-        if (ai.recoverTick >= AI_RECOVER_FRAMES) {
-          ai.state       = 'alive';
-          ai.y           = AI_STAND_Y;
-          ai.recoverTick = 0;
+      // ── AI state machine ──────────────────────────────────────────────────────────
+      for (const a of ais) {
+        if (a.state === 'sitting') {
+          if (++a.recoverTick >= AI_RECOVER_FRAMES) {
+            a.state       = 'alive';
+            a.recoverTick = 0;
+          }
+        } else if (a.state === 'dying') {
+          a.fadeTick++;
+          a.fadeAlpha = 1 - a.fadeTick / AI_FADE_FRAMES;
+          if (a.fadeTick >= AI_FADE_FRAMES) { a.state = 'dead'; a.fadeAlpha = 0; }
         }
       }
 
-      // ── AI death fade ─────────────────────────────────────────────────────────────
-      if (ai.state === 'dying') {
-        ai.fadeTick++;
-        ai.fadeAlpha = 1 - ai.fadeTick / AI_FADE_FRAMES;
-        if (ai.fadeTick >= AI_FADE_FRAMES) {
-          ai.state     = 'dead';
-          ai.fadeAlpha = 0;
+      // ── Respawn queue ─────────────────────────────────────────────────────────────
+      for (let i = respawnQueue.length - 1; i >= 0; i--) {
+        if (--respawnQueue[i].timer <= 0) {
+          const sp = SPAWN_POSITIONS[respawnQueue[i].spawnIdx];
+          ais.push(createAI(sp.x, sp.y));
+          respawnQueue.splice(i, 1);
         }
       }
 
@@ -949,24 +1239,21 @@
         ex.timer++;
         const beamLen = (ex.timer / EXPLODE_FRAMES) * EXPLODE_MAX_LEN;
 
-        if (!ex.hitAI && (ai.state === 'alive' || ai.state === 'sitting')) {
-          const aiH = ai.state === 'alive' ? 13 : 8;
-          const aiL = ai.x + 1, aiR = ai.x + 7;
-          const aiT = ai.y + 2, aiB = ai.y + 2 + aiH;
-          const beams = [
-            { x1: ex.cx,           y1: ex.cy - 1, x2: ex.cx + beamLen, y2: ex.cy + 2 },
-            { x1: ex.cx - beamLen, y1: ex.cy - 1, x2: ex.cx,           y2: ex.cy + 2 },
-            { x1: ex.cx - 1,       y1: ex.cy,     x2: ex.cx + 2,       y2: ex.cy + beamLen },
-            { x1: ex.cx - 1,       y1: ex.cy - beamLen, x2: ex.cx + 2, y2: ex.cy },
-          ];
+        const beams = [
+          { x1: ex.cx,           y1: ex.cy - 1, x2: ex.cx + beamLen, y2: ex.cy + 2 },
+          { x1: ex.cx - beamLen, y1: ex.cy - 1, x2: ex.cx,           y2: ex.cy + 2 },
+          { x1: ex.cx - 1,       y1: ex.cy,     x2: ex.cx + 2,       y2: ex.cy + beamLen },
+          { x1: ex.cx - 1,       y1: ex.cy - beamLen, x2: ex.cx + 2, y2: ex.cy },
+        ];
+        for (const a of ais) {
+          if (ex.hitAIs.has(a) || (a.state !== 'alive' && a.state !== 'sitting')) continue;
+          const aiH = a.state === 'alive' ? 13 : 8;
+          const aiL = a.x + 1, aiR = a.x + 7;
+          const aiT = a.y + 2, aiB = a.y + 2 + aiH;
           for (const beam of beams) {
             if (beam.x1 < aiR && beam.x2 > aiL && beam.y1 < aiB && beam.y2 > aiT) {
-              ex.hitAI = true;
-              if (ai.state === 'alive') {
-                ai.state = 'sitting'; ai.y = AI_SIT_Y; ai.recoverTick = 0; playHit();
-              } else {
-                ai.state = 'dying'; ai.y = AI_DEAD_Y; playDeath();
-              }
+              ex.hitAIs.add(a);
+              aiHit(a);
               break;
             }
           }
@@ -1047,6 +1334,19 @@
     function drawLongShotPU(gx, gy) {
       drawSprite(BULLET_PU, PAL_BULLET_LONG, gx, gy);
       drawDigitL(gx + 6, gy + 3, '#44FF44');
+    }
+
+    function drawDigitR(gx, gy, color) {
+      dot(gx,   gy,   color); dot(gx+1, gy,   color);                           // ##.
+      dot(gx,   gy+1, color);                          dot(gx+2, gy+1, color);  // #.#
+      dot(gx,   gy+2, color); dot(gx+1, gy+2, color);                           // ##.
+      dot(gx,   gy+3, color);                          dot(gx+2, gy+3, color);  // #.#
+      dot(gx,   gy+4, color);                          dot(gx+2, gy+4, color);  // #.#
+    }
+
+    function drawRicochetPU(gx, gy) {
+      drawSprite(BULLET_PU, PAL_BULLET_RIC, gx, gy);
+      drawDigitR(gx + 6, gy + 3, '#FF8800');
     }
 
     // ── Pixel font ───────────────────────────────────────────────────────────────
@@ -1131,6 +1431,10 @@
       for (const ca of cacti)
         drawSprite(CACTUS, PAL_CACTUS, ca.x, ca.y, false, CACTUS_SCALE, ca.damage);
 
+      // Barrels — degrade when shot, block movement
+      for (const ba of barrels)
+        drawSprite(BARREL, PAL_BARREL, ba.x, ba.y, false, 1, ba.damage);
+
       // Bombs (shoot to detonate)
       for (const bm of bombs)
         drawSprite(DYNAMITE, PAL_DYNAMITE, bm.x, bm.y);
@@ -1143,16 +1447,20 @@
       for (const wp of widePickups)
         drawWideShotPU(wp.x, wp.y);
 
-      // Long-shot power-ups
+      // Long-shot power-ups (L — no ricochet)
       for (const lp of longPickups)
         drawLongShotPU(lp.x, lp.y);
+
+      // Ricochet power-ups (R — splits on wall)
+      for (const rp of ricPickups)
+        drawRicochetPU(rp.x, rp.y);
 
       // Healing potion
       drawSprite(POTION, PAL_POTION, 24, 18);
 
       // Bullets
-      ctx.fillStyle = '#FFFFFF';
       for (const b of bullets) {
+        ctx.fillStyle = b.fromAI ? '#FF6644' : '#FFFFFF';
         ctx.fillRect(Math.round(b.x) * S, Math.round(b.y) * S, 2 * S, 2 * S);
       }
 
@@ -1197,12 +1505,14 @@
       // Damsel — standing (13px tall; y aligns feet with arena bottom)
       drawSprite(DAMSEL, PAL_DAMSEL, 223, 71);  // y=71 → feet at 87, matches cowboy baseline
 
-      // AI cowboy
-      if (ai.state !== 'dead') {
-        ctx.globalAlpha = ai.fadeAlpha;
-        if      (ai.state === 'alive')   drawSprite(COWBOY,      PAL_P2, ai.x, ai.y, true);
-        else if (ai.state === 'sitting') drawSprite(COWBOY_SIT,  PAL_P2, ai.x, ai.y, true);
-        else                             drawSprite(COWBOY_DEAD, PAL_P2, ai.x, ai.y, true);
+      // AI cowboys
+      for (const a of ais) {
+        if (a.state === 'dead') continue;
+        ctx.globalAlpha = a.fadeAlpha;
+        const ax = Math.round(a.x), ay = Math.round(a.y);
+        if      (a.state === 'alive')   drawSprite(COWBOY,      PAL_P2, ax, ay, a.facingLeft);
+        else if (a.state === 'sitting') drawSprite(COWBOY_SIT,  PAL_P2, ax, ay, a.facingLeft);
+        else                            drawSprite(COWBOY_DEAD, PAL_P2, Math.round(a.deadX), Math.round(a.deadY), a.deadFacing);
         ctx.globalAlpha = 1;
       }
 
@@ -1237,6 +1547,10 @@
       box.style.cssText = 'width:24px;height:44px;background:#555555;border:2px solid #888888;border-radius:3px;';
       ammoMeterEl.appendChild(box);
       ammoBoxEls.push(box);
+    }
+
+    function updateHealthBar() {
+      document.getElementById('health-fill').style.height = player.hp + '%';
     }
 
     function updateAmmoMeter() {
