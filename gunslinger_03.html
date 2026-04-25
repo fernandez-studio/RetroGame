@@ -30,16 +30,28 @@
   <div id="start-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.88);display:flex;align-items:center;justify-content:center;z-index:100;cursor:pointer">
     <div style="color:#FFD700;font-family:'Courier New',monospace;font-size:28px;letter-spacing:8px;text-shadow:3px 3px 0 #7A3A00">CLICK TO START</div>
   </div>
+  <div id="pause-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.75);display:none;align-items:center;justify-content:center;z-index:99">
+    <div style="color:#FFD700;font-family:'Courier New',monospace;font-size:40px;letter-spacing:12px;text-shadow:4px 4px 0 #7A3A00">PAUSED</div>
+  </div>
+  <div id="game-over-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:none;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:80px;z-index:98;pointer-events:none">
+    <div style="color:#CC2222;font-family:'Courier New',monospace;font-size:38px;letter-spacing:8px;text-shadow:4px 4px 0 #000,0 0 30px #880000;text-align:center">YOU FAILED YOUR DAUGHTER</div>
+  </div>
 
   <div style="position:relative;width:1488px;margin-bottom:18px;height:44px">
     <div id="ammo-meter" style="display:flex;flex-direction:row;align-items:flex-end;gap:5px;margin-left:38px;height:100%"></div>
     <div class="title" style="position:absolute;left:38px;width:1440px;text-align:center;top:50%;transform:translateY(-50%)">* OK FERNAND *</div>
+    <div id="score-display" style="position:absolute;right:0;top:50%;transform:translateY(-50%);color:#FFD700;font-family:'Courier New',monospace;font-size:26px;letter-spacing:3px;text-shadow:3px 3px 0 #7A3A00">SCORE 0 &nbsp; 0/15</div>
   </div>
   <div style="display:flex;align-items:center;gap:16px">
     <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
-      <div style="color:#FF5555;font-size:11px;letter-spacing:3px;font-family:'Courier New',monospace">HP</div>
+      <div style="color:#FF5555;font-size:16px;font-family:'Courier New',monospace;font-weight:bold;line-height:18px;text-align:center">L<br>I<br>F<br>E</div>
       <div style="width:22px;height:384px;background:#1a1a1a;border:2px solid #555;border-radius:3px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end">
         <div id="health-fill" style="width:100%;height:100%;background:#CC2222"></div>
+      </div>
+      <div id="hearts" style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:6px">
+        <span style="color:#CC2222;font-size:34px;line-height:1">♥</span>
+        <span style="color:#CC2222;font-size:34px;line-height:1">♥</span>
+        <span style="color:#CC2222;font-size:34px;line-height:1">♥</span>
       </div>
     </div>
     <canvas id="game" width="1440" height="960"></canvas>
@@ -265,23 +277,22 @@
       [ null,   null, 'DRM', 'DRM',  null,  null,  null ],  //  3 drum bottom
     ];
 
-    // Healing potion — round-bottom flask — 7 × 13
-    // Golden cork, narrow neck, wide round body, glowing green liquid, root base
+    // Healing potion — 7 × 12
+    // Cork + 3-row flute + round body (profile 3→5→7→7→5→3) + base
     const POTION = [
     //   0     1     2     3     4     5     6
-      [ null,  null, 'CK', 'CY',  null,  null,  null ],  //  0 cork
-      [ null,  null, 'NK', 'NK',  null,  null,  null ],  //  1 neck narrow
-      [ null,  null, 'NK', 'NK',  null,  null,  null ],  //  2 neck
-      [ null,  'GL', 'GL', 'GL', 'GL',   null,  null ],  //  3 shoulder
-      [ null,  'GL', 'GH', 'GR', 'GL',   null,  null ],  //  4 body top — highlight left
-      [ 'GL',  'GL', 'GR', 'GR', 'GR',  'GL',  null ],  //  5 body widens
-      [ 'GL',  'GR', 'GR', 'GR', 'GR',  'GR',  'GL' ],  //  6 widest — full glow
-      [ 'GL',  'GR', 'GR', 'GR', 'GR',  'GR',  'GL' ],  //  7
-      [ 'GL',  'GL', 'GR', 'GR', 'GR',  'GL',  null ],  //  8 body narrows
-      [ null,  'GL', 'GL', 'GR', 'GL',   null,  null ],  //  9 round bottom
-      [ null,  null, 'GL', 'GL',  null,  null,  null ],  // 10 base
-      [ null,  'RT', 'RT', 'RT', 'RT',   null,  null ],  // 11 root wrap
-      [ null,  'RT',  null,  null, 'RT',  null,  null ],  // 12 root feet
+      [ null, null, 'CY', 'CK', null, null, null ],  //  0 cork
+      [ null, null, 'GS', 'GS', null, null, null ],  //  1 flute
+      [ null, null, 'GS', 'GS', null, null, null ],  //  2 flute
+      [ null, null, 'GS', 'GS', null, null, null ],  //  3 flute
+      [ null, null, 'GS', 'LQ', 'GS', null, null ],  //  4 shoulder   3 wide
+      [ null, 'GS', 'LQ', 'LH', 'LQ', 'GS', null ],  //  5 body top   5 wide
+      [ 'GS', 'LQ', 'LQ', 'LH', 'LQ', 'LQ', 'GS' ], //  6 widest     7 wide
+      [ 'GS', 'LQ', 'LQ', 'LQ', 'BL', 'LQ', 'GS' ], //  7 widest     7 wide — bubble
+      [ null, 'GS', 'LQ', 'LQ', 'LQ', 'GS', null ],  //  8 body bot   5 wide
+      [ null, null, 'GS', 'LQ', 'GS', null, null ],   //  9 base top   3 wide
+      [ null, null, 'GS', 'GS', null, null, null ],   // 10 base
+      [ null, null, null, null, null, null, null ],   // 11 empty
     ];
 
     // Damsel sprite — 9 × 16, facing left. Chunky orange hair mop, magenta dress, blue collar+shoes.
@@ -376,13 +387,26 @@
     };
 
     const PAL_POTION = {
-      CK: '#8B6820',  // cork dark
-      CY: '#D4AA30',  // cork highlight
-      NK: '#A8CCA0',  // neck — faint green glass
-      GL: '#70B890',  // bottle glass — green tinted
-      GH: '#AAFFCC',  // liquid highlight (bright spot)
-      GR: '#22CC44',  // glowing green liquid
-      RT: '#5A3A10',  // root / vine wrap at base
+      CK: '#2A0E00',  // cork — very dark brown
+      CY: '#5A2808',  // cork highlight — dark amber
+      GS: '#5599EE',  // blue glass (walls + flute)
+      LQ: '#00CC44',  // glowing green liquid
+      LH: '#88FFAA',  // liquid highlight
+      BL: '#CCFFCC',  // bubble
+    };
+
+    const PAL_SPEED_POTION = {
+      CK: '#2A0E00', CY: '#5A2808', GS: '#5599EE',
+      LQ: '#DD1122',  // red liquid
+      LH: '#FFAAAA',  // pink highlight
+      BL: '#FFDDDD',  // bubble
+    };
+
+    const PAL_LASER_POTION = {
+      CK: '#2A0E00', CY: '#5A2808', GS: '#5599EE',
+      LQ: '#5500BB',  // deep indigo liquid
+      LH: '#AA55FF',  // medium purple highlight
+      BL: '#CCAAFF',  // bubble
     };
 
     // ── Game state ───────────────────────────────────────────────────────────────
@@ -395,9 +419,17 @@
     const TELEPORT_TRIGGER  = 9;    // radius² — triggers when player centre within 3px
     const TELEPORT_COOLDOWN = 90;   // frames before re-trigger after arriving
 
+    const PLAYER_RESPAWN_FRAMES = 150;  // 2.5 s fade + delay before respawn
+    let score     = 0;
+    let killCount = 0;
+    const KILLS_PER_LEVEL = 15;
+
     const player = {
       x: 40, y: 73,
       hp: 100,
+      lives: 3,
+      dying: false,
+      dyingTimer: 0,
       facingLeft: false,
       animFrame: 0,   // 0=idle, 1=walk_A, 2=walk_B
       animTick: 0,
@@ -509,23 +541,31 @@
     const bullets = [];
     let fireCooldown = 0;
 
-    let weapon    = 'default';  // 'default' | 'tommy' | 'wide' | 'long'
-    let ammoBoxes = 8;
-    let burstShot = 0;
+    let weapon          = 'default';  // 'default' | 'tommy' | 'wide' | 'long' | 'laser'
+    let ammoBoxes       = 8;
+    let burstShot       = 0;
+    let speedBoostTimer = 0;  // frames remaining on speed boost (30s = 1800 frames)
 
     const COS30 = Math.cos(Math.PI / 6);
     const SIN30 = Math.sin(Math.PI / 6);
 
-    const tommyPickups = [];
-    const widePickups  = [];
-    const longPickups  = [];
-    const ricPickups   = [];
-    const barrels      = [];
+    const tommyPickups  = [];
+    const widePickups   = [];
+    const longPickups   = [];
+    const ricPickups    = [];
+    const potionPickups = [];
+    const speedPickups  = [];
+    const laserPickups  = [];
+    const barrels       = [];
 
     (function placePickups() {
       const MARGIN  = 12;
-      const MIN_SEP = 18;
+      const MIN_SEP = 20;
       const placed  = [];
+
+      // Center 50% of playable area is forbidden for pickups (x: 62-178, y: 42-118)
+      const INNER_X1 = 62, INNER_X2 = 178;
+      const INNER_Y1 = 42, INNER_Y2 = 118;
 
       const excluded = [
         { x: 44,  y: 80,  r: 22 },  // player start
@@ -534,9 +574,7 @@
         { x: 227, y: 79,  r: 16 },  // damsel
         { x: 13,  y: 147, r: 14 },  // portal SW
         { x: 227, y: 13,  r: 14 },  // portal NE
-        { x: 118, y: 34,  r: 18 },  // cactus top
-        { x: 125, y: 80,  r: 18 },  // cactus mid
-        { x: 120, y: 126, r: 18 },  // cactus bot
+        ...cacti.map(ca => ({ x: ca.x + 8, y: ca.y + 14, r: 24 })),  // cacti (15.6×28.8 at scale 1.2)
         { x: 66,  y: 19,  r: 10 },  // bomb 1
         { x: 167, y: 19,  r: 10 },  // bomb 2
         { x: 74,  y: 129, r: 10 },  // bomb 3
@@ -550,27 +588,48 @@
         return false;
       }
 
+      function inCenter(x, y) {
+        return x >= INNER_X1 && x <= INNER_X2 && y >= INNER_Y1 && y <= INNER_Y2;
+      }
+
+      // Barrels: placed anywhere (they're obstacles, not pickups)
       function randPos(xMin, xMax) {
-        xMin = xMin ?? MARGIN;
-        xMax = xMax ?? (228 - MARGIN);
         for (let t = 0; t < 400; t++) {
           const x = xMin + Math.floor(Math.random() * (xMax - xMin));
           const y = MARGIN + Math.floor(Math.random() * (150 - MARGIN * 2));
           if (!tooClose(x, y)) { placed.push({ x, y }); return { x, y }; }
         }
-        // fallback if somehow no valid spot found
         const x = xMin + Math.floor(Math.random() * (xMax - xMin));
         const y = MARGIN + Math.floor(Math.random() * (150 - MARGIN * 2));
-        placed.push({ x, y });
-        return { x, y };
+        placed.push({ x, y }); return { x, y };
       }
 
-      barrels.push({ ...randPos(MARGIN, 120),         damage: initBarrelDamage() });  // left half
-      barrels.push({ ...randPos(120, 228 - MARGIN),   damage: initBarrelDamage() });  // right half
-      for (let i = 0; i < 3; i++) tommyPickups.push(randPos());
-      for (let i = 0; i < 3; i++) widePickups.push(randPos());
-      for (let i = 0; i < 3; i++) longPickups.push(randPos());
-      ricPickups.push(randPos());
+      // Pickups: skirt only — outside center 50%
+      function skirtPos() {
+        for (let t = 0; t < 600; t++) {
+          const x = MARGIN + Math.floor(Math.random() * (228 - MARGIN * 2));
+          const y = MARGIN + Math.floor(Math.random() * (150 - MARGIN * 2));
+          if (inCenter(x, y)) continue;
+          if (!tooClose(x, y)) { placed.push({ x, y }); return { x, y }; }
+        }
+        // Fallback: skirt position ignoring separation
+        for (let t = 0; t < 200; t++) {
+          const x = MARGIN + Math.floor(Math.random() * (228 - MARGIN * 2));
+          const y = MARGIN + Math.floor(Math.random() * (150 - MARGIN * 2));
+          if (!inCenter(x, y)) { placed.push({ x, y }); return { x, y }; }
+        }
+        return { x: MARGIN, y: MARGIN };
+      }
+
+      barrels.push({ ...randPos(MARGIN, 120),         damage: initBarrelDamage() });
+      barrels.push({ ...randPos(120, 228 - MARGIN),   damage: initBarrelDamage() });
+      for (let i = 0; i < 3; i++) tommyPickups.push(skirtPos());
+      for (let i = 0; i < 3; i++) widePickups.push(skirtPos());
+      for (let i = 0; i < 3; i++) longPickups.push(skirtPos());
+      ricPickups.push(skirtPos());
+      potionPickups.push(skirtPos());
+      speedPickups.push(skirtPos());
+      laserPickups.push(skirtPos());
     })();
 
     const AI_FADE_FRAMES    = 60;
@@ -615,7 +674,11 @@
         a.deadFacing = a.facingLeft;
         a.state      = 'dying';
         playDeath();
-        respawnQueue.push({ timer: RESPAWN_DELAY, spawnIdx: Math.floor(Math.random() * 2) });
+        score += 20;
+        killCount++;
+        updateScore();
+        if (killCount < KILLS_PER_LEVEL)
+          respawnQueue.push({ timer: RESPAWN_DELAY, spawnIdx: Math.floor(Math.random() * 2) });
       }
     }
 
@@ -636,6 +699,25 @@
     const explosions      = [];
     const EXPLODE_FRAMES  = 25;
     const EXPLODE_MAX_LEN = 72;   // 45% of 160 game-pixel arena height
+
+    const laserBeams   = [];
+    const LASER_FRAMES = 20;
+
+    // Ray vs AABB — returns distance t along ray to entry point, or -1 if miss
+    function rayAABB(ox, oy, ux, uy, len, xmin, xmax, ymin, ymax) {
+      let tmin = 0, tmax = len;
+      if (Math.abs(ux) > 1e-6) {
+        const t1 = (xmin - ox) / ux, t2 = (xmax - ox) / ux;
+        tmin = Math.max(tmin, Math.min(t1, t2));
+        tmax = Math.min(tmax, Math.max(t1, t2));
+      } else if (ox < xmin || ox > xmax) return -1;
+      if (Math.abs(uy) > 1e-6) {
+        const t1 = (ymin - oy) / uy, t2 = (ymax - oy) / uy;
+        tmin = Math.max(tmin, Math.min(t1, t2));
+        tmax = Math.min(tmax, Math.max(t1, t2));
+      } else if (oy < ymin || oy > ymax) return -1;
+      return tmin <= tmax ? tmin : -1;
+    }
 
     const smokeParticles = [];
 
@@ -751,11 +833,135 @@
       src.stop(audioCtx.currentTime + dur);
     }
 
+    function playOof() {
+      const now = audioCtx.currentTime;
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(340, now);
+      osc.frequency.exponentialRampToValueAtTime(160, now + 0.08);
+      osc.frequency.exponentialRampToValueAtTime(75,  now + 0.24);
+      gain.gain.setValueAtTime(0.55, now);
+      gain.gain.linearRampToValueAtTime(0.6, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+      osc.start(now); osc.stop(now + 0.24);
+    }
+
+    function playPlayerDeath() {
+      const now = audioCtx.currentTime;
+      [300, 220, 160, 95].forEach((freq, i) => {
+        const osc  = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.type = 'sawtooth';
+        const t = now + i * 0.22;
+        osc.frequency.setValueAtTime(freq, t);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.5, t + 0.38);
+        gain.gain.setValueAtTime(0.3, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+        osc.start(t); osc.stop(t + 0.42);
+      });
+    }
+
+    function playLaser() {
+      const now = audioCtx.currentTime;
+      const dur = 0.38;
+      // outer sawtooth sweep — descending whoosh
+      const osc1  = audioCtx.createOscillator();
+      const gain1 = audioCtx.createGain();
+      osc1.connect(gain1); gain1.connect(audioCtx.destination);
+      osc1.type = 'sawtooth';
+      osc1.frequency.setValueAtTime(2400, now);
+      osc1.frequency.exponentialRampToValueAtTime(140, now + dur);
+      gain1.gain.setValueAtTime(0.07, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + dur);
+      osc1.start(now); osc1.stop(now + dur);
+      // sine core — brighter mid
+      const osc2  = audioCtx.createOscillator();
+      const gain2 = audioCtx.createGain();
+      osc2.connect(gain2); gain2.connect(audioCtx.destination);
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(1800, now);
+      osc2.frequency.exponentialRampToValueAtTime(300, now + dur);
+      gain2.gain.setValueAtTime(0.12, now);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + dur);
+      osc2.start(now); osc2.stop(now + dur);
+    }
+
+    function playFuneralMarch() {
+      // Chopin Op.35 — Funeral March melody, Bb minor, ~52 BPM
+      const now = audioCtx.currentTime;
+      const BPM = 52;
+      const Q   = 60 / BPM;       // quarter note duration
+      const H   = Q * 2;          // half note
+      const DQ  = Q * 1.5;        // dotted quarter
+
+      // Note frequencies (Bb minor)
+      const F = {
+        Bb3: 233.08, C4: 261.63, Db4: 277.18, Eb4: 311.13,
+        F4:  349.23, Gb4: 369.99, Bb4: 466.16,
+      };
+
+      // [freq, duration, offset] — the iconic opening phrase
+      const notes = [
+        [F.Bb3, DQ, 0],
+        [F.Bb3, Q * 0.5, DQ],
+        [F.Bb3, Q, DQ + Q * 0.5],
+        [F.Gb4, DQ, DQ + Q * 1.5],
+        [F.F4,  Q * 0.5, DQ * 2 + Q * 0.5],
+        [F.Eb4, Q, DQ * 2 + Q],
+        [F.Db4, DQ, DQ * 2 + Q * 2],
+        [F.C4,  Q * 0.5, DQ * 3 + Q * 2.5],
+        [F.Db4, H,  DQ * 3 + Q * 3],
+        [F.Bb3, H,  DQ * 3 + Q * 5],
+      ];
+
+      notes.forEach(([freq, dur, offset]) => {
+        const t = now + offset + 0.4;  // 0.4s lead-in pause
+        const noteDur = dur * 0.88;
+
+        // primary sine
+        const osc1  = audioCtx.createOscillator();
+        const gain1 = audioCtx.createGain();
+        osc1.connect(gain1); gain1.connect(audioCtx.destination);
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(freq, t);
+        gain1.gain.setValueAtTime(0, t);
+        gain1.gain.linearRampToValueAtTime(0.22, t + 0.02);
+        gain1.gain.setValueAtTime(0.22, t + noteDur - 0.05);
+        gain1.gain.linearRampToValueAtTime(0, t + noteDur);
+        osc1.start(t); osc1.stop(t + noteDur + 0.01);
+
+        // octave-lower sine for depth
+        const osc2  = audioCtx.createOscillator();
+        const gain2 = audioCtx.createGain();
+        osc2.connect(gain2); gain2.connect(audioCtx.destination);
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(freq * 0.5, t);
+        gain2.gain.setValueAtTime(0, t);
+        gain2.gain.linearRampToValueAtTime(0.10, t + 0.02);
+        gain2.gain.setValueAtTime(0.10, t + noteDur - 0.05);
+        gain2.gain.linearRampToValueAtTime(0, t + noteDur);
+        osc2.start(t); osc2.stop(t + noteDur + 0.01);
+      });
+    }
+
     // ── Input ────────────────────────────────────────────────────────────────────
 
     const keys = {};
-    window.addEventListener('keydown', e => { keys[e.key] = true; });
-    window.addEventListener('keyup',   e => { keys[e.key] = false; });
+    let paused       = false;
+    let prevRTrigger = false;
+    const pauseOverlay = document.getElementById('pause-overlay');
+    function togglePause() {
+      paused = !paused;
+      pauseOverlay.style.display = paused ? 'flex' : 'none';
+    }
+    window.addEventListener('keydown', e => {
+      keys[e.key] = true;
+      if ((e.key === 'p' || e.key === 'P') && !e.repeat) togglePause();
+    });
+    window.addEventListener('keyup', e => { keys[e.key] = false; });
 
     const startOverlay = document.getElementById('start-overlay');
     startOverlay.addEventListener('click', () => {
@@ -773,6 +979,26 @@
     // ── Update ───────────────────────────────────────────────────────────────────
 
     function update() {
+      // ── Player death / respawn ────────────────────────────────────────────────────
+      if (player.dying) {
+        player.dyingTimer--;
+        if (player.dyingTimer <= 0) {
+          if (player.lives > 0) {
+            player.dying      = false;
+            player.x          = 40; player.y = 73;
+            player.hp         = 100;
+            player.facingLeft = false;
+            player.animFrame  = 0;
+            player.tpState    = 'idle';
+            player.tpAlpha    = 1;
+            updateHealthBar();
+            resetAIsToRight();
+          }
+          // lives === 0: stay invisible (game over — no loop yet)
+        }
+        // skip all player input while dying, but continue AI/bullet/explosion updates
+      }
+
       // ── Teleport state machine ───────────────────────────────────────────────────
       if (player.tpCooldown > 0) player.tpCooldown--;
 
@@ -798,7 +1024,7 @@
         }
       }
 
-      if (player.tpState === 'idle') {
+      if (player.tpState === 'idle' && !player.dying) {
         const gp = getGamepad();
         if (gp && gp.buttons.some(b => b.pressed)) audioCtx.resume();
 
@@ -819,7 +1045,7 @@
         if (moving) {
           gameActivated = true;
           const len = Math.sqrt(dx * dx + dy * dy);
-          const spd = SPEED / Math.SQRT2;
+          const spd = SPEED * (speedBoostTimer > 0 ? 1.3 : 1) / Math.SQRT2;
           dx = (dx / len) * spd;
           dy = (dy / len) * spd;
 
@@ -915,6 +1141,42 @@
           }
         }
 
+        // ── Healing potion pickup ─────────────────────────────────────────────────
+        for (let i = potionPickups.length - 1; i >= 0; i--) {
+          const pp = potionPickups[i];
+          if (player.x + 8 > pp.x && player.x + 1 < pp.x + 7 &&
+              player.y + 5 > pp.y && player.y + 13 < pp.y + 13) {
+            potionPickups.splice(i, 1);
+            player.hp = 100;
+            updateHealthBar();
+            break;
+          }
+        }
+
+        // ── Speed potion pickup (violet — +30% speed for 30s) ─────────────────────
+        for (let i = speedPickups.length - 1; i >= 0; i--) {
+          const sp = speedPickups[i];
+          if (player.x + 8 > sp.x && player.x + 1 < sp.x + 7 &&
+              player.y + 5 > sp.y && player.y + 13 < sp.y + 13) {
+            speedPickups.splice(i, 1);
+            speedBoostTimer = 1800;  // 30 seconds at 60 fps
+            break;
+          }
+        }
+
+        // ── Laser potion pickup (indigo — 3 piercing shots) ───────────────────────
+        for (let i = laserPickups.length - 1; i >= 0; i--) {
+          const lp = laserPickups[i];
+          if (player.x + 8 > lp.x && player.x + 1 < lp.x + 7 &&
+              player.y + 5 > lp.y && player.y + 13 < lp.y + 13) {
+            laserPickups.splice(i, 1);
+            weapon    = 'laser';
+            ammoBoxes = 3;
+            updateAmmoMeter();
+            break;
+          }
+        }
+
         // ── Shooting ──────────────────────────────────────────────────────────────
         let sx = 0, sy = 0;
         if (keys['ArrowUp'])    sy -= 1;
@@ -965,6 +1227,53 @@
               if (ammoBoxes === 0) weapon = 'default';
               fireCooldown = FIRE_COOLDOWN;
               updateAmmoMeter();
+            } else if (weapon === 'laser') {
+              const lux = ndx / BULLET_SPEED, luy = ndy / BULLET_SPEED;
+              let llen = 9999;
+              if (lux >  1e-6) llen = Math.min(llen, (236 - bx) / lux);
+              if (lux < -1e-6) llen = Math.min(llen, (bx - 4)   / -lux);
+              if (luy >  1e-6) llen = Math.min(llen, (156 - by) / luy);
+              if (luy < -1e-6) llen = Math.min(llen, (by - 4)   / -luy);
+              // Damage cacti along beam
+              for (let j = cacti.length - 1; j >= 0; j--) {
+                const ca = cacti[j];
+                const t = rayAABB(bx, by, lux, luy, llen,
+                  ca.x, ca.x + CACTUS[0].length * CACTUS_SCALE,
+                  ca.y, ca.y + CACTUS.length    * CACTUS_SCALE);
+                if (t < 0) continue;
+                const hc = Math.max(0, Math.min(CACTUS[0].length - 1, Math.floor((bx + lux * t - ca.x) / CACTUS_SCALE)));
+                const hr = Math.max(0, Math.min(CACTUS.length    - 1, Math.floor((by + luy * t - ca.y) / CACTUS_SCALE)));
+                applyChunk(ca.damage, hc, hr, CHUNK_RADIUS);
+                if (isCactusGone(ca.damage)) cacti.splice(j, 1);
+                playDing();
+              }
+              // Damage barrels along beam
+              for (let j = barrels.length - 1; j >= 0; j--) {
+                const ba = barrels[j];
+                const t = rayAABB(bx, by, lux, luy, llen,
+                  ba.x, ba.x + BARREL[0].length,
+                  ba.y, ba.y + BARREL.length);
+                if (t < 0) continue;
+                const hc = Math.max(0, Math.min(BARREL[0].length - 1, Math.floor(bx + lux * t - ba.x)));
+                const hr = Math.max(0, Math.min(BARREL.length    - 1, Math.floor(by + luy * t - ba.y)));
+                applyChunk(ba.damage, hc, hr, CHUNK_RADIUS);
+                if (isBarrelGone(ba.damage)) barrels.splice(j, 1);
+                playDing();
+              }
+              // Hit AIs along beam
+              for (const a of ais) {
+                if (a.state !== 'alive' && a.state !== 'sitting') continue;
+                const aiH = a.state === 'alive' ? 13 : 8;
+                if (rayAABB(bx, by, lux, luy, llen, a.x + 1, a.x + 7, a.y + 2, a.y + 2 + aiH) >= 0) {
+                  aiHit(a); aiHit(a);  // laser = 2 hits, instant kill
+              }
+              }
+              laserBeams.push({ x: bx, y: by, ux: lux, uy: luy, len: llen, timer: 0 });
+              ammoBoxes = Math.max(0, ammoBoxes - 1);
+              if (ammoBoxes === 0) weapon = 'default';
+              fireCooldown = FIRE_COOLDOWN;
+              updateAmmoMeter();
+              playLaser();
             } else {
               bullets.push({ x: bx, y: by, dx: ndx, dy: ndy, dist: 0 });
               if (weapon === 'tommy') {
@@ -981,14 +1290,15 @@
               } else {
                 fireCooldown = FIRE_COOLDOWN;
               }
+              playPew();
             }
-            playPew();
           }
         } else {
           if (weapon === 'tommy') burstShot = 0;
         }
 
         if (fireCooldown > 0) fireCooldown--;
+        if (speedBoostTimer > 0) speedBoostTimer--;
       }
 
       // ── AI movement + shooting ────────────────────────────────────────────────────
@@ -1049,11 +1359,12 @@
             }
 
             if (a.x === prevX && a.y === prevY && (moveX !== 0 || moveY !== 0)) {
-              if (++a.stuckTick > 15) {
+              if (++a.stuckTick > 8) {
                 a.stuckTick     = 0;
                 a.flankDir      = -a.flankDir;
-                a.behaviorState = 'pursue';
+                a.behaviorState = 'flank';
                 a.behaviorTick  = 0;
+                a.behaviorDuration = 40 + Math.floor(Math.random() * 30);
               }
             } else {
               a.stuckTick = 0;
@@ -1180,14 +1491,14 @@
         if (bombHit) continue;
 
         // ── Bullet vs player (AI bullets only) ───────────────────────────────────
-        if (b.fromAI && player.tpState === 'idle') {
+        if (b.fromAI && player.tpState === 'idle' && !player.dying) {
           const px = Math.round(player.x), py = Math.round(player.y);
           if (b.x + 2 > px + 1 && b.x < px + 7 &&
               b.y + 2 > py + 5  && b.y < py + 14) {
             bullets.splice(i, 1);
             player.hp = Math.max(0, player.hp - 20);
             updateHealthBar();
-            playHit();
+            playOof();
             continue;
           }
         }
@@ -1253,7 +1564,7 @@
           for (const beam of beams) {
             if (beam.x1 < aiR && beam.x2 > aiL && beam.y1 < aiB && beam.y2 > aiT) {
               ex.hitAIs.add(a);
-              aiHit(a);
+              aiHit(a); aiHit(a);  // beam = 2 hits, instant kill
               break;
             }
           }
@@ -1281,6 +1592,10 @@
 
         if (ex.timer >= EXPLODE_FRAMES) explosions.splice(i, 1);
       }
+
+      // Laser beam fade-out
+      for (let i = laserBeams.length - 1; i >= 0; i--)
+        if (++laserBeams[i].timer >= LASER_FRAMES) laserBeams.splice(i, 1);
 
       // ── Smoke particle update ──────────────────────────────────────────────────────
       for (let i = smokeParticles.length - 1; i >= 0; i--) {
@@ -1455,8 +1770,17 @@
       for (const rp of ricPickups)
         drawRicochetPU(rp.x, rp.y);
 
-      // Healing potion
-      drawSprite(POTION, PAL_POTION, 24, 18);
+      // Healing potion (green)
+      for (const pp of potionPickups)
+        drawSprite(POTION, PAL_POTION, pp.x, pp.y);
+
+      // Speed potion (violet)
+      for (const sp of speedPickups)
+        drawSprite(POTION, PAL_SPEED_POTION, sp.x, sp.y);
+
+      // Laser potion (indigo)
+      for (const lp of laserPickups)
+        drawSprite(POTION, PAL_LASER_POTION, lp.x, lp.y);
 
       // Bullets
       for (const b of bullets) {
@@ -1502,6 +1826,21 @@
         ctx.globalAlpha = 1;
       }
 
+      // Laser beams — directional, wall-to-wall, purple
+      for (const lb of laserBeams) {
+        const t = lb.timer / LASER_FRAMES;
+        ctx.globalAlpha = Math.max(0, 1 - t * 0.75);
+        ctx.save();
+        ctx.translate(lb.x * S, lb.y * S);
+        ctx.rotate(Math.atan2(lb.uy, lb.ux));
+        ctx.fillStyle = '#7711BB';   // outer purple beam (3px wide)
+        ctx.fillRect(0, -1.5 * S, lb.len * S, 3 * S);
+        ctx.fillStyle = '#EE88FF';   // bright pink core (1px)
+        ctx.fillRect(0, -0.5 * S, lb.len * S, S);
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
+
       // Damsel — standing (13px tall; y aligns feet with arena bottom)
       drawSprite(DAMSEL, PAL_DAMSEL, 223, 71);  // y=71 → feet at 87, matches cowboy baseline
 
@@ -1516,8 +1855,9 @@
         ctx.globalAlpha = 1;
       }
 
-      // Player 1 — animated (fades during teleport)
-      ctx.globalAlpha = player.tpAlpha;
+      // Player 1 — animated (fades during teleport or death)
+      const deathAlpha = player.dying ? player.dyingTimer / PLAYER_RESPAWN_FRAMES : 1;
+      ctx.globalAlpha = player.tpAlpha * deathAlpha;
       drawSprite(COWBOY_FRAMES[player.animFrame], PAL_P1,
                  Math.round(player.x), Math.round(player.y),
                  player.facingLeft);
@@ -1551,14 +1891,50 @@
 
     function updateHealthBar() {
       document.getElementById('health-fill').style.height = player.hp + '%';
+      if (player.hp <= 0 && !player.dying) triggerPlayerDeath();
+    }
+
+    function updateHearts() {
+      const spans = document.getElementById('hearts').children;
+      for (let i = 0; i < 3; i++)
+        spans[i].style.color = i < player.lives ? '#CC2222' : '#333333';
+    }
+
+    function updateScore() {
+      document.getElementById('score-display').textContent =
+        `SCORE ${score}   ${killCount}/${KILLS_PER_LEVEL}`;
+    }
+
+    function resetAIsToRight() {
+      ais.length = 0;
+      respawnQueue.length = 0;
+      ais.push(createAI(SPAWN_POSITIONS[0].x, SPAWN_POSITIONS[0].y));
+      ais.push(createAI(SPAWN_POSITIONS[1].x, SPAWN_POSITIONS[1].y));
+    }
+
+    function triggerPlayerDeath() {
+      player.dying     = true;
+      player.dyingTimer = PLAYER_RESPAWN_FRAMES;
+      player.lives      = Math.max(0, player.lives - 1);
+      updateHearts();
+      playPlayerDeath();
+      if (player.lives === 0) {
+        playFuneralMarch();
+        document.getElementById('game-over-overlay').style.display = 'flex';
+      }
     }
 
     function updateAmmoMeter() {
       const active = weapon !== 'default';
       for (let i = 0; i < 8; i++) {
         const filled = i < ammoBoxes;
-        ammoBoxEls[i].style.background    = filled ? (active ? '#CC2222' : '#555555') : '#1a1a1a';
-        ammoBoxEls[i].style.borderColor   = filled ? (active ? '#FF5555' : '#888888') : '#333333';
+        let bg, border;
+        if (!filled)                    { bg = '#1a1a1a'; border = '#333333'; }
+        else if (!active)               { bg = '#555555'; border = '#888888'; }
+        else if (weapon === 'laser')    { bg = '#7700CC'; border = '#CC44FF'; }
+        else                            { bg = '#CC2222'; border = '#FF5555'; }
+        ammoBoxEls[i].style.background  = bg;
+        ammoBoxEls[i].style.borderColor = border;
       }
     }
     updateAmmoMeter();
@@ -1566,7 +1942,16 @@
     // ── Game loop ────────────────────────────────────────────────────────────────
 
     function loop() {
-      update();
+      const gp = getGamepad();
+      const rtNow = !!(gp && (
+        (gp.buttons[7] && gp.buttons[7].pressed)   ||  // RT as digital button
+        (gp.axes.length > 5 && gp.axes[5] > 0.5)   ||  // RT as analog axis
+        (gp.buttons[9] && gp.buttons[9].pressed)        // Start / Menu
+      ));
+      if (rtNow && !prevRTrigger) togglePause();
+      prevRTrigger = rtNow;
+
+      if (!paused) update();
       render();
       requestAnimationFrame(loop);
     }
