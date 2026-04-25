@@ -29,6 +29,10 @@ Each version is a self-contained HTML file (`gunslinger.html`, `gunslinger_02.ht
 - Player 1 movement via WASD/arrows, clamped to arena bounds
 - Shooting mechanic (spacebar)
 
+## Memory
+
+Memory lives in `.claude/memory/` inside this project folder — it is committed to git and backed up with the repo. The index is `.claude/memory/MEMORY.md`. Always read and write memory files there, not in `~/.claude/projects/`.
+
 ## Conventions
 
 - New versions get a new numbered file (`gunslinger_03.html`, etc.) — don't overwrite previous versions.
