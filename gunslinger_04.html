@@ -1,0 +1,2175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>OK FERNAND</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'Courier New', monospace;
+    }
+    .title {
+      color: #FFD700;
+      font-size: 36px;
+      letter-spacing: 12px;
+      text-shadow: 4px 4px 0px #7A3A00;
+    }
+    canvas {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+  </style>
+</head>
+<body>
+  <div id="start-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.88);display:flex;align-items:center;justify-content:center;z-index:100;cursor:pointer">
+    <div style="color:#FFD700;font-family:'Courier New',monospace;font-size:28px;letter-spacing:8px;text-shadow:3px 3px 0 #7A3A00">CLICK TO START</div>
+  </div>
+  <div id="pause-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.75);display:none;align-items:center;justify-content:center;z-index:99">
+    <div style="color:#FFD700;font-family:'Courier New',monospace;font-size:40px;letter-spacing:12px;text-shadow:4px 4px 0 #7A3A00">PAUSED</div>
+  </div>
+  <div id="game-over-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:none;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:80px;z-index:98;pointer-events:none">
+    <div style="color:#CC2222;font-family:'Courier New',monospace;font-size:38px;letter-spacing:8px;text-shadow:4px 4px 0 #000,0 0 30px #880000;text-align:center">YOU FAILED YOUR DAUGHTER</div>
+  </div>
+
+  <div style="position:relative;width:1488px;margin-bottom:18px;height:44px">
+    <div id="ammo-meter" style="display:flex;flex-direction:row;align-items:flex-end;gap:5px;margin-left:38px;height:100%"></div>
+    <div class="title" style="position:absolute;left:38px;width:1440px;text-align:center;top:50%;transform:translateY(-50%)">* OK FERNAND *</div>
+    <div id="score-display" style="position:absolute;right:0;top:50%;transform:translateY(-50%);color:#FFD700;font-family:'Courier New',monospace;font-size:26px;letter-spacing:3px;text-shadow:3px 3px 0 #7A3A00">SCORE 0 &nbsp; 0/15</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+      <div style="color:#FF5555;font-size:16px;font-family:'Courier New',monospace;font-weight:bold;line-height:18px;text-align:center">L<br>I<br>F<br>E</div>
+      <div style="width:22px;height:384px;background:#1a1a1a;border:2px solid #555;border-radius:3px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end">
+        <div id="health-fill" style="width:100%;height:100%;background:#CC2222"></div>
+      </div>
+      <div id="hearts" style="display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:6px">
+        <span style="color:#CC2222;font-size:34px;line-height:1">♥</span>
+        <span style="color:#CC2222;font-size:34px;line-height:1">♥</span>
+        <span style="color:#CC2222;font-size:34px;line-height:1">♥</span>
+      </div>
+    </div>
+    <canvas id="game" width="1440" height="960"></canvas>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx    = canvas.getContext('2d');
+    const S = 6; // 1 game pixel = 6 screen pixels  →  arena is 240 × 160 game pixels
+
+    // ── Primitives ───────────────────────────────────────────────────────────────
+
+    function dot(gx, gy, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(gx * S, gy * S, S, S);
+    }
+
+    function grect(gx, gy, gw, gh, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(gx * S, gy * S, gw * S, gh * S);
+    }
+
+    function drawSprite(sprite, palette, gx, gy, flipX = false, scale = 1, damage = null) {
+      const rows = sprite.length;
+      const cols = sprite[0].length;
+      const ps   = S * scale;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (damage && !damage[r][c]) continue;
+          const key = sprite[r][flipX ? (cols - 1 - c) : c];
+          if (key !== null && palette[key]) {
+            ctx.fillStyle = palette[key];
+            ctx.fillRect(gx * S + c * ps, gy * S + r * ps, ps, ps);
+          }
+        }
+      }
+    }
+
+    // ── Sprites ──────────────────────────────────────────────────────────────────
+
+    // Cowboy facing RIGHT — 9 × 14
+    const COWBOY = [
+      [ null, 'HT',  'HT',  'HT',  'HT',  'HT',  null,  null,  null ],
+      [ 'HT', 'HT',  'HT',  'HT',  'HT',  'HT',  'HT',  null,  null ],
+      [ null,  null, 'SK',  'SK',  'SK',   null,  null,  null,  null ],
+      [ null, 'SK',  'SK',  'SK',  'SK',  'SK',   null,  null,  null ],
+      [ null, 'SK',  'SK',  'SK',  'SK',  'SK',   null,  null,  null ],
+      [ null, 'SH',  'SH',  'VS',  'SH',  'SH',   null,  null,  null ],
+      [ 'SH', 'SH',  'SH',  'VS',  'VS',  'SH',  'SH',   null,  null ],
+      [ 'SH', 'SH',  'SH',  'VS',  'VS',  'SH',  'SH',  'GN',   null ],
+      [ null, 'SH',  'BL',  'BL',  'BL',  'SH',   null, 'GN',   null ],
+      [ null, 'PN',  'PN',  'PN',  'PN',  'PN',   null,  null,  null ],
+      [ null, 'PN',  'PN',   null, 'PN',  'PN',   null,  null,  null ],
+      [ null, 'PN',  'PN',   null, 'PN',  'PN',   null,  null,  null ],
+      [ null, 'PN',  'PN',   null, 'PN',  'PN',   null,  null,  null ],
+      [ 'BT', 'BT',  'BT',   null, 'BT',  'BT',  'BT',   null,  null ],
+    ];
+
+    // Cowboy walk frame A — legs spread apart
+    const COWBOY_WALK_A = [
+      [ null, 'HT',  'HT',  'HT',  'HT',  'HT',  null,  null,  null ],
+      [ 'HT', 'HT',  'HT',  'HT',  'HT',  'HT',  'HT',  null,  null ],
+      [ null,  null, 'SK',  'SK',  'SK',   null,  null,  null,  null ],
+      [ null, 'SK',  'SK',  'SK',  'SK',  'SK',   null,  null,  null ],
+      [ null, 'SK',  'SK',  'SK',  'SK',  'SK',   null,  null,  null ],
+      [ null, 'SH',  'SH',  'VS',  'SH',  'SH',   null,  null,  null ],
+      [ 'SH', 'SH',  'SH',  'VS',  'VS',  'SH',  'SH',   null,  null ],
+      [ 'SH', 'SH',  'SH',  'VS',  'VS',  'SH',  'SH',  'GN',   null ],
+      [ null, 'SH',  'BL',  'BL',  'BL',  'SH',   null, 'GN',   null ],
+      [ null, 'PN',  'PN',  'PN',  'PN',  'PN',   null,  null,  null ],
+      [ null, 'PN',  'PN',   null, 'PN',  'PN',   null,  null,  null ],
+      [ null, 'PN',  'PN',   null, 'PN',  'PN',   null,  null,  null ],
+      [ 'PN', 'PN',   null,  null,  null, 'PN',  'PN',   null,  null ],
+      [ 'BT', 'BT',   null,  null,  null, 'BT',  'BT',  'BT',   null ],
+    ];
+
+    // Cowboy walk frame B — legs crossed/together
+    const COWBOY_WALK_B = [
+      [ null, 'HT',  'HT',  'HT',  'HT',  'HT',  null,  null,  null ],
+      [ 'HT', 'HT',  'HT',  'HT',  'HT',  'HT',  'HT',  null,  null ],
+      [ null,  null, 'SK',  'SK',  'SK',   null,  null,  null,  null ],
+      [ null, 'SK',  'SK',  'SK',  'SK',  'SK',   null,  null,  null ],
+      [ null, 'SK',  'SK',  'SK',  'SK',  'SK',   null,  null,  null ],
+      [ null, 'SH',  'SH',  'VS',  'SH',  'SH',   null,  null,  null ],
+      [ 'SH', 'SH',  'SH',  'VS',  'VS',  'SH',  'SH',   null,  null ],
+      [ 'SH', 'SH',  'SH',  'VS',  'VS',  'SH',  'SH',  'GN',   null ],
+      [ null, 'SH',  'BL',  'BL',  'BL',  'SH',   null, 'GN',   null ],
+      [ null, 'PN',  'PN',  'PN',  'PN',  'PN',   null,  null,  null ],
+      [ null, 'PN',  'PN',   null, 'PN',  'PN',   null,  null,  null ],
+      [ null, 'PN',  'PN',   null, 'PN',  'PN',   null,  null,  null ],
+      [ null,  null, 'PN',  'PN',  'PN',   null,  null,  null,  null ],
+      [ null, 'BT',  'BT',  'BT',  'BT',  'BT',   null,  null,  null ],
+    ];
+
+    // AI cowboy — sitting on butt (first hit) 9 × 11
+    // Rows 0-8 are identical to COWBOY — only the legs change to seated position
+    const COWBOY_SIT = [
+      //   0      1      2      3      4      5      6      7      8
+      [ null,  'HT',  'HT',  'HT',  'HT',  'HT',  null,  null,  null ],  //  0 hat
+      [ 'HT',  'HT',  'HT',  'HT',  'HT',  'HT',  'HT',  null,  null ],  //  1 hat brim
+      [ null,  null,  'SK',  'SK',  'SK',   null,  null,  null,  null ],  //  2 face top
+      [ null,  'SK',  'SK',  'SK',  'SK',  'SK',   null,  null,  null ],  //  3 face
+      [ null,  'SK',  'SK',  'SK',  'SK',  'SK',   null,  null,  null ],  //  4 face lower
+      [ null,  'SH',  'SH',  'VS',  'SH',  'SH',   null,  null,  null ],  //  5 shirt
+      [ 'SH',  'SH',  'SH',  'VS',  'VS',  'SH',  'SH',   null,  null ],  //  6 shirt wide
+      [ 'SH',  'SH',  'SH',  'VS',  'VS',  'SH',  'SH',  'GN',   null ],  //  7 gun hand
+      [ null,  'SH',  'BL',  'BL',  'BL',  'SH',   null,  'GN',  null ],  //  8 belt
+      [ null,  'PN',  'PN',  'PN',  'PN',  'PN',  'PN',  'PN',  null ],  //  9 butt + thighs out forward
+      [ null,  null,  null,  null,  'BT',  'BT',  'BT',  'BT',  null ],  // 10 boots at leg-end
+    ];
+
+    // AI cowboy — lying on back, side view, 14 × 7
+    // Width = standing height (14). Height = body depth (7) — full proportions.
+    // Face profile and boot toe at ROW 0 (top = sky). Hat falls behind head in rows 4-6.
+    const COWBOY_DEAD = [
+      //    0      1      2      3      4      5      6      7      8      9     10     11     12     13
+      [ null,  null,  'SK',  'SK',  null,  'SH',  'SH',  'SH',  'SH',  'PN',  'PN',  'PN',  'PN',  'BT' ],  //  0 nose/forehead + chest + pants front + toe up
+      [ null,  'SK',  'SK',  'SK',  'SK',  'SH',  'SH',  'VS',  'BL',  'PN',  'PN',  'PN',  'PN',  'BT' ],  //  1 face wide + shirt + belt + legs + boot
+      [ null,  'SK',  'VS',  'SK',  'SK',  'SH',  'SH',  'VS',  'BL',  'PN',  'PN',  'PN',  'PN',  'BT' ],  //  2 eye + body
+      [ null,  'SK',  'SK',  'SK',  null,  'SH',  'SH',  'SH',  'SH',  'PN',  'PN',  'PN',  'PN',  'BT' ],  //  3 chin + body + legs + heel
+      [ 'HT',  'HT',  null,  null,  null,  'SH',  'SH',  'SH',  'SH',  'PN',  'PN',  'PN',  'PN',  null ],  //  4 hat crown behind head + body back
+      [ 'HT',  'HT',  'HT',  null,  null,  null,  null,  null,  null,  null,  null,  null,  null,  null ],  //  5 hat brim
+      [ null,  'HT',  'HT',  null,  null,  null,  null,  null,  null,  null,  null,  null,  null,  null ],  //  6 hat brim bottom
+    ];
+
+    // Large thick cactus — 13 × 24
+    // Two-pixel-wide trunk (cols 5-6), thick arms, wide spreading base
+    const CACTUS = [
+    //   0     1     2     3     4     5     6     7     8     9    10    11    12
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], //  0
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], //  1
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], //  2
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], //  3
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], //  4
+      ['CL', null, null, null, null, 'CK', 'CK', null, null, null, null, null, 'CR'], //  5 arm tips
+      ['CL', null, null, null, null, 'CK', 'CK', null, null, null, null, null, 'CR'], //  6
+      ['CL', null, null, null, null, 'CK', 'CK', null, null, null, null, null, 'CR'], //  7
+      ['CL', 'CL', null, null, null, 'CK', 'CK', null, null, null, null, 'CR', 'CR'], //  8 arms widen
+      ['CL', 'CL', 'CL', null, null, 'CK', 'CK', null, null, null, 'CR', 'CR', 'CR'], //  9
+      ['CL', 'CL', 'CL', 'CL', null, 'CK', 'CK', null, 'CR', 'CR', 'CR', 'CR', 'CR'], // 10
+      ['CL', 'CL', 'CL', 'CL', 'CL', 'CK', 'CK', 'CR', 'CR', 'CR', 'CR', 'CR', 'CR'], // 11 arms join
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 12
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 13
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 14
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 15
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 16
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 17
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 18
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 19
+      [null, null, null, null, null, 'CK', 'CK', null, null, null, null, null, null], // 20
+      [null, null, null, null, 'CB', 'CB', 'CB', 'CB', null, null, null, null, null], // 21 base spreads
+      [null, null, null, 'CB', 'CB', 'CB', 'CB', 'CB', 'CB', null, null, null, null], // 22
+      [null, null, 'CB', 'CB', 'CB', 'CB', 'CB', 'CB', 'CB', 'CB', null, null, null], // 23
+    ];
+
+    // Wooden barrel — 10 × 13  (side view; 3 iron hoops, vertical oak planks)
+    const BARREL = [
+      //   0     1     2     3     4     5     6     7     8     9
+      [ null, 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', null ],  //  0 top hoop
+      [ null, 'TP', 'TP', 'TH', 'TP', 'TP', 'TH', 'TP', 'TP', null ],  //  1 lid
+      [ null, 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', null ],  //  2 planks
+      [ 'HB', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'HB' ],  //  3 upper side hoop
+      [ 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB' ],  //  4 upper band
+      [ 'WL', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL' ],  //  5 planks
+      [ 'WL', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL' ],  //  6 planks
+      [ 'WL', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL' ],  //  7 planks
+      [ 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB' ],  //  8 lower band
+      [ 'HB', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'HB' ],  //  9 lower side hoop
+      [ null, 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', 'WL', 'WD', null ],  // 10 planks
+      [ null, 'WL', 'WL', 'WL', 'WL', 'WL', 'WL', 'WL', 'WL', null ],  // 11 bottom
+      [ null, 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', 'HB', null ],  // 12 bottom hoop
+    ];
+
+    // Dynamite pack — 7 × 10
+    // Three red sticks bundled, brown rope band, sparking fuse on top
+    const DYNAMITE = [
+      [ null,  null, 'FU',  'FU',  null,  null,  null ],  //  0 fuse
+      [ null, 'RD',  'RD',  'RD',  'RD',  null,  null ],  //  1 top caps
+      [ 'RD', 'RD',  'DK',  'RD',  'DK',  'RD',  null ],  //  2 three sticks
+      [ 'RD', 'RD',  'DK',  'RD',  'DK',  'RD',  null ],  //  3
+      [ 'RD', 'BN',  'BN',  'BN',  'BN',  'RD',  null ],  //  4 rope band
+      [ 'RD', 'RD',  'DK',  'RD',  'DK',  'RD',  null ],  //  5
+      [ 'RD', 'RD',  'DK',  'RD',  'DK',  'RD',  null ],  //  6
+      [ 'RD', 'RD',  'DK',  'RD',  'DK',  'RD',  null ],  //  7
+      [ 'RD', 'RD',  'DK',  'RD',  'DK',  'RD',  null ],  //  8
+      [ null, 'RD',  'RD',  'RD',  'RD',  null,  null ],  //  9 bottom caps
+    ];
+
+    // Wide-shot power-up: vertical bullet — 5 × 11
+    const BULLET_PU = [
+    //   0     1     2     3     4
+      [ null,  null, 'SM',  null,  null ],  //  0 half-circle top (1px)
+      [ null,  'SM', 'SM', 'SM',  null ],  //  1 half-circle mid (3px)
+      [ 'SM',  'SM', 'SM', 'SM', 'SM'  ],  //  2 half-circle base (5px) — full width
+      [ 'SM',  'SM', 'SM', 'SM', 'SM'  ],  //  3 casing
+      [ 'SM',  'SM', 'SM', 'SM', 'SM'  ],  //  4 casing
+      [ 'SM',  'SM', 'SM', 'SM', 'SM'  ],  //  5 casing
+      [ 'SM',  'SM', 'SM', 'SM', 'SM'  ],  //  6 casing
+      [ 'SM',  'SM', 'SM', 'SM', 'SM'  ],  //  7 casing
+      [ 'SM',  'SM', 'SM', 'SM', 'SM'  ],  //  8 casing
+      [ null,  'SD', 'SD', 'SD',  null ],  //  9 extractor groove
+      [ 'SR',  'SR', 'SR', 'SR', 'SR'  ],  // 10 rim
+    ];
+
+    // Tommy gun — 11 × 7  (horizontal, barrel pointing right)
+    // Recognisable by the round drum magazine underneath
+    const TOMMY = [
+      [ null, 'BRL', 'BRL', 'BRL', 'BRL', 'BRL', 'BRL', 'BRL', 'BRL', null,  null ],  // 0 barrel
+      [ null, 'GUN', 'GUN', 'GUN', 'GUN', 'GUN', 'GUN', 'GUN', 'GUN', 'BRL', null ],  // 1 receiver
+      ['STK', 'GUN', 'GUN', 'GUN', 'GUN', 'GUN', 'GUN', 'GUN',  null,  null,  null ],  // 2 stock + body
+      ['STK', 'STK', 'TRG',  null,  null,  null,  null,  null,  null,  null,  null ],  // 3 grip + trigger
+      [ null,  null,  null,  null, 'DRM', 'DRM', 'DRM', 'DRM', 'DRM',  null,  null ],  // 4 drum
+      [ null,  null,  null,  null, 'DRM', 'DRM', 'DRM', 'DRM', 'DRM',  null,  null ],  // 5 drum
+      [ null,  null,  null,  null, 'DRM', 'DRM', 'DRM', 'DRM', 'DRM',  null,  null ],  // 6 drum
+    ];
+
+    // Small tommy gun — in player's hand — 7 × 4, barrel pointing right
+    const TOMMY_HAND = [
+      //   0      1      2      3      4      5      6
+      [ null,  'BRL', 'BRL', 'BRL', 'BRL', 'BRL',  null ],  //  0 barrel
+      [ 'STK', 'GUN', 'GUN', 'GUN', 'GUN',  null,  null ],  //  1 body + stock
+      [ 'STK', 'TRG', 'DRM', 'DRM', 'DRM',  null,  null ],  //  2 grip + drum
+      [ null,   null, 'DRM', 'DRM',  null,  null,  null ],  //  3 drum bottom
+    ];
+
+    // Healing potion — 7 × 12
+    // Cork + 3-row flute + round body (profile 3→5→7→7→5→3) + base
+    const POTION = [
+    //   0     1     2     3     4     5     6
+      [ null, null, 'CY', 'CK', null, null, null ],  //  0 cork
+      [ null, null, 'GS', 'GS', null, null, null ],  //  1 flute
+      [ null, null, 'GS', 'GS', null, null, null ],  //  2 flute
+      [ null, null, 'GS', 'GS', null, null, null ],  //  3 flute
+      [ null, null, 'GS', 'LQ', 'GS', null, null ],  //  4 shoulder   3 wide
+      [ null, 'GS', 'LQ', 'LH', 'LQ', 'GS', null ],  //  5 body top   5 wide
+      [ 'GS', 'LQ', 'LQ', 'LH', 'LQ', 'LQ', 'GS' ], //  6 widest     7 wide
+      [ 'GS', 'LQ', 'LQ', 'LQ', 'BL', 'LQ', 'GS' ], //  7 widest     7 wide — bubble
+      [ null, 'GS', 'LQ', 'LQ', 'LQ', 'GS', null ],  //  8 body bot   5 wide
+      [ null, null, 'GS', 'LQ', 'GS', null, null ],   //  9 base top   3 wide
+      [ null, null, 'GS', 'GS', null, null, null ],   // 10 base
+      [ null, null, null, null, null, null, null ],   // 11 empty
+    ];
+
+    // Damsel sprite — 9 × 16, facing left. Chunky orange hair mop, magenta dress, blue collar+shoes.
+    const DAMSEL = [
+      //   0      1      2      3      4      5      6      7      8
+      [ null,  null,  null,  'HY',  'HR',  null,  null,  null,  null ],  //  0 hair flyaway top
+      [ null,  null,  'HR',  'HR',  'HR',  'HY',  null,  null,  null ],  //  1 hair builds
+      [ null,  'HY',  'HR',  'HR',  'HR',  'HR',  'HY',  null,  null ],  //  2 hair full mass
+      [ null,  'HR',  'HR',  'HR',  'HR',  'HR',  'HY',  'HR',  null ],  //  3 hair widest + flyaway
+      [ 'FC',  'FC',  'HR',  'HR',  'HR',  null,  null,  'HR',  null ],  //  4 face top + hair beside
+      [ 'FC',  'EY',  'FC',  'HR',  'HR',  null,  null,  null,  null ],  //  5 eye + hair
+      [ 'FC',  'FC',  'FC',  'FC',  null,  null,  null,  null,  null ],  //  6 lower face
+      [ null,  'FC',  'FC',  null,  null,  null,  null,  null,  null ],  //  7 chin
+      [ null,  'BL',  'BL',  'BL',  'BL',  null,  null,  null,  null ],  //  8 blue collar — 4 wide, matches face
+      [ null,  'PL',  'PL',  'PK',  'PK',  null,  null,  null,  null ],  //  9 dress waist — same 4 wide, no protrusion
+      [ null,  'PK',  'PK',  'PK',  'PK',  null,  null,  null,  null ],  // 10 dress
+      [ null,  'PK',  'PK',  'PK',  'PK',  'PK',  null,  null,  null ],  // 11 skirt flares right
+      [ null,  'PK',  'PK',  'PK',  'PK',  'PK',  null,  null,  null ],  // 12 skirt
+      [ 'PK',  'PK',  'PK',  'PK',  'PK',  'PK',  null,  null,  null ],  // 13 skirt flares left too — widest
+      [ 'WH',  'WH',  'WH',  'WH',  'WH',  'WH',  null,  null,  null ],  // 14 white stripe — full skirt width
+      [ 'BL',  'BL',  null,  null,  null,  'BL',  null,  null,  null ],  // 15 blue shoes
+    ];
+
+    // ── Palettes ─────────────────────────────────────────────────────────────────
+
+    const PAL_P1 = {
+      HT: '#3D1C06', SK: '#F4C27F', SH: '#BB2020',
+      VS: '#1C0A00', BL: '#3A1E08', GN: '#AAAAAA',
+      PN: '#5A4030', BT: '#1A0800',
+    };
+
+    const PAL_P2 = {
+      HT: '#111111', SK: '#F4C27F', SH: '#1A1AB0',
+      VS: '#0A0A22', BL: '#28183A', GN: '#CCCCCC',
+      PN: '#28284A', BT: '#080818',
+    };
+
+    const PAL_CACTUS = {
+      CK: '#2A8C2A', CL: '#1A6C1A', CR: '#1A6C1A', CB: '#165516',
+    };
+
+    const PAL_BARREL = {
+      WD: '#4A2A08',  // dark oak plank
+      WL: '#7A4A18',  // light oak plank
+      TH: '#9A6520',  // lid highlight
+      TP: '#5C3610',  // lid
+      HB: '#1E0E04',  // iron hoop
+    };
+
+    const PAL_DYNAMITE = {
+      FU: '#DDCC00',  // fuse — yellow spark
+      RD: '#CC2222',  // red dynamite stick
+      DK: '#881111',  // dark groove between sticks
+      BN: '#8B5428',  // brown rope band
+    };
+
+    const PAL_BULLET = {
+      SM: '#AAAAAA',  // silver body
+      SD: '#666666',  // extractor groove
+      SR: '#888888',  // rim
+    };
+
+    const PAL_BULLET_LONG = {
+      SM: '#44BB44',  // green body
+      SD: '#227722',  // dark green groove
+      SR: '#339933',  // mid green rim
+    };
+
+    const PAL_BULLET_RIC = {
+      SM: '#FF8833',  // orange body
+      SD: '#CC5500',  // dark groove
+      SR: '#DD6622',  // rim
+    };
+
+    const PAL_TOMMY = {
+      BRL: '#111111',
+      GUN: '#1A1A1A',
+      STK: '#111111',
+      TRG: '#000000',
+      DRM: '#0D0D0D',
+    };
+
+    const PAL_DAMSEL = {
+      HR: '#BB2800',  // deep orange-red hair
+      HY: '#EE4400',  // bright orange hair highlight
+      FC: '#F4C27F',  // face/skin — matches cowboy
+      EY: '#111111',  // eye
+      BL: '#2255CC',  // vivid blue collar + shoes
+      PK: '#C8108A',  // hot magenta dress
+      PL: '#F055BB',  // light pink highlight patch
+      WH: '#FFFFFF',  // white stripe
+    };
+
+    const PAL_POTION = {
+      CK: '#2A0E00',  // cork — very dark brown
+      CY: '#5A2808',  // cork highlight — dark amber
+      GS: '#5599EE',  // blue glass (walls + flute)
+      LQ: '#00CC44',  // glowing green liquid
+      LH: '#88FFAA',  // liquid highlight
+      BL: '#CCFFCC',  // bubble
+    };
+
+    const PAL_SPEED_POTION = {
+      CK: '#2A0E00', CY: '#5A2808', GS: '#5599EE',
+      LQ: '#DD1122',  // red liquid
+      LH: '#FFAAAA',  // pink highlight
+      BL: '#FFDDDD',  // bubble
+    };
+
+    const PAL_LASER_POTION = {
+      CK: '#2A0E00', CY: '#5A2808', GS: '#5599EE',
+      LQ: '#5500BB',  // deep indigo liquid
+      LH: '#AA55FF',  // medium purple highlight
+      BL: '#CCAAFF',  // bubble
+    };
+
+    // ── Game state ───────────────────────────────────────────────────────────────
+
+    const SPEED     = 0.9;  // game pixels per frame
+    const ANIM_RATE = 6;    // frames between leg animation steps
+
+    const TURRET_CX           = 207;
+    const TURRET_CY           = 79;
+    const TURRET_RANGE        = Math.round(240 * 0.45);  // 108 px — 45% arena width
+    const SHRAPNEL_RANGE      = Math.round(240 * 0.05);  // 12 px — 5% arena width
+    const TURRET_BULLET_SPEED = 2.2;
+    const TURRET_COOLDOWN     = 140;  // frames between shots
+    const TURRET_ACTIVE_X     = 120;  // player centre must be left of this
+
+    const TELEPORT_PORTALS  = [{ x: 13, y: 147 }, { x: 227, y: 13 }];
+    const TELEPORT_FRAMES   = 15;   // frames per fade half
+    const TELEPORT_TRIGGER  = 9;    // radius² — triggers when player centre within 3px
+    const TELEPORT_COOLDOWN = 90;   // frames before re-trigger after arriving
+
+    const PLAYER_RESPAWN_FRAMES = 150;  // 2.5 s fade + delay before respawn
+    let score     = 0;
+    let killCount = 0;
+    const KILLS_PER_LEVEL = 15;
+
+    const player = {
+      x: 40, y: 73,
+      hp: 100,
+      lives: 3,
+      dying: false,
+      dyingTimer: 0,
+      facingLeft: false,
+      animFrame: 0,   // 0=idle, 1=walk_A, 2=walk_B
+      animTick: 0,
+      tpState:    'idle',  // 'idle' | 'out' | 'in'
+      tpTimer:    0,
+      tpTarget:   0,
+      tpAlpha:    1,
+      tpCooldown: 0,
+    };
+
+    const COWBOY_FRAMES = [COWBOY, COWBOY_WALK_A, COWBOY_WALK_B];
+
+    // ── Cactus damage ────────────────────────────────────────────────────────────
+
+    const CACTUS_SCALE  = 1.2;
+    const CHUNK_RADIUS  = 2.5; // vertical reach in sprite pixels per hit
+    const HSCALE        = 7;   // horizontal squeeze — only ~1 column wide per hit
+
+    function initDamage() {
+      return Array.from({ length: CACTUS.length }, () =>
+        new Array(CACTUS[0].length).fill(true)
+      );
+    }
+
+    function applyChunk(damage, hitC, hitR, radius) {
+      const r2 = radius * radius;
+      for (let r = 0; r < damage.length; r++) {
+        for (let c = 0; c < damage[0].length; c++) {
+          const dr = r - hitR, dc = c - hitC;
+          if (HSCALE * dc * dc + dr * dr <= r2) damage[r][c] = false;
+        }
+      }
+    }
+
+    function initBarrelDamage() {
+      return Array.from({ length: BARREL.length }, () =>
+        new Array(BARREL[0].length).fill(true)
+      );
+    }
+
+    function isBarrelGone(damage) {
+      for (let r = 0; r < BARREL.length; r++)
+        for (let c = 0; c < BARREL[0].length; c++)
+          if (BARREL[r][c] !== null && damage[r][c]) return false;
+      return true;
+    }
+
+    function playerCollidesWithCacti(px, py) {
+      const p1x = px + 1, p2x = px + 6;
+      const p1y = py + 5, p2y = py + 13;
+      for (const ca of cacti) {
+        for (let r = 0; r < CACTUS.length; r++) {
+          for (let c = 0; c < CACTUS[0].length; c++) {
+            if (CACTUS[r][c] === null || !ca.damage[r][c]) continue;
+            const cx1 = ca.x + c * CACTUS_SCALE;
+            const cx2 = ca.x + (c + 1) * CACTUS_SCALE;
+            const cy1 = ca.y + r * CACTUS_SCALE;
+            const cy2 = ca.y + (r + 1) * CACTUS_SCALE;
+            if (p1x < cx2 && p2x > cx1 && p1y < cy2 && p2y > cy1) return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function playerCollidesWithBarrels(px, py) {
+      const p1x = px + 1, p2x = px + 6;
+      const p1y = py + 5, p2y = py + 13;
+      for (const ba of barrels) {
+        for (let r = 0; r < BARREL.length; r++) {
+          for (let c = 0; c < BARREL[0].length; c++) {
+            if (BARREL[r][c] === null || !ba.damage[r][c]) continue;
+            if (p1x < ba.x + c + 1 && p2x > ba.x + c &&
+                p1y < ba.y + r + 1 && p2y > ba.y + r) return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function playerCollidesWithObstacles(px, py) {
+      return playerCollidesWithCacti(px, py) || playerCollidesWithBarrels(px, py);
+    }
+
+    function isCactusGone(damage) {
+      for (let r = 0; r < CACTUS.length; r++)
+        for (let c = 0; c < CACTUS[0].length; c++)
+          if (CACTUS[r][c] !== null && damage[r][c]) return false;
+      return true;
+    }
+
+    const cacti = [
+      { x: 110, y: 20,  damage: initDamage() },
+      { x: 117, y: 66,  damage: initDamage() },
+      { x: 112, y: 112, damage: initDamage() },
+    ];
+
+    const BULLET_SPEED   = 2.5;  // game pixels per frame
+    const BULLET_RANGE      = 128;  // ~53% of arena width (240)
+    const LONG_BULLET_RANGE = 480;  // 2× screen width
+    const FIRE_COOLDOWN     = 30;   // frames between shots
+    const SPLIT_DIVERGE     = Math.PI / 9;  // 20° spread on ricochet split
+    const COS_DIV = Math.cos(SPLIT_DIVERGE);
+    const SIN_DIV = Math.sin(SPLIT_DIVERGE);
+
+    const TOMMY_SHOT_COOLDOWN  = 5;   // frames between shots within a burst
+    const TOMMY_BURST_COOLDOWN = 28;  // frames between bursts
+
+    const bullets = [];
+    let fireCooldown = 0;
+
+    let weapon          = 'default';  // 'default' | 'tommy' | 'wide' | 'long' | 'laser'
+    let ammoBoxes       = 8;
+    let burstShot       = 0;
+    let speedBoostTimer = 0;  // frames remaining on speed boost (30s = 1800 frames)
+
+    const COS30 = Math.cos(Math.PI / 6);
+    const SIN30 = Math.sin(Math.PI / 6);
+
+    const tommyPickups  = [];
+    const widePickups   = [];
+    const longPickups   = [];
+    const ricPickups    = [];
+    const potionPickups = [];
+    const speedPickups  = [];
+    const laserPickups  = [];
+    const barrels       = [];
+
+    (function placePickups() {
+      const MARGIN  = 12;
+      const MIN_SEP = 20;
+      const placed  = [];
+
+      // Center 50% of playable area is forbidden for pickups (x: 62-178, y: 42-118)
+      const INNER_X1 = 62, INNER_X2 = 178;
+      const INNER_Y1 = 42, INNER_Y2 = 118;
+
+      const excluded = [
+        { x: 44,  y: 80,  r: 22 },  // player start
+        { x: 214, y: 58,  r: 16 },  // AI above damsel
+        { x: 214, y: 97,  r: 16 },  // AI below damsel
+        { x: 227, y: 79,  r: 16 },  // damsel
+        { x: 13,  y: 147, r: 14 },  // portal SW
+        { x: 227, y: 13,  r: 14 },  // portal NE
+        ...cacti.map(ca => ({ x: ca.x + 8, y: ca.y + 14, r: 24 })),  // cacti (15.6×28.8 at scale 1.2)
+        { x: 66,  y: 19,  r: 10 },  // bomb 1
+        { x: 167, y: 19,  r: 10 },  // bomb 2
+        { x: 74,  y: 129, r: 10 },  // bomb 3
+        { x: 207, y: 79,  r: 14 },  // turret
+      ];
+
+      function tooClose(x, y) {
+        for (const p of placed)
+          if ((x - p.x) ** 2 + (y - p.y) ** 2 < MIN_SEP * MIN_SEP) return true;
+        for (const e of excluded)
+          if ((x - e.x) ** 2 + (y - e.y) ** 2 < e.r * e.r) return true;
+        return false;
+      }
+
+      function inCenter(x, y) {
+        return x >= INNER_X1 && x <= INNER_X2 && y >= INNER_Y1 && y <= INNER_Y2;
+      }
+
+      // Barrels: placed anywhere (they're obstacles, not pickups)
+      function randPos(xMin, xMax) {
+        for (let t = 0; t < 400; t++) {
+          const x = xMin + Math.floor(Math.random() * (xMax - xMin));
+          const y = MARGIN + Math.floor(Math.random() * (150 - MARGIN * 2));
+          if (!tooClose(x, y)) { placed.push({ x, y }); return { x, y }; }
+        }
+        const x = xMin + Math.floor(Math.random() * (xMax - xMin));
+        const y = MARGIN + Math.floor(Math.random() * (150 - MARGIN * 2));
+        placed.push({ x, y }); return { x, y };
+      }
+
+      // Pickups: skirt only — outside center 50%
+      function skirtPos() {
+        for (let t = 0; t < 600; t++) {
+          const x = MARGIN + Math.floor(Math.random() * (228 - MARGIN * 2));
+          const y = MARGIN + Math.floor(Math.random() * (150 - MARGIN * 2));
+          if (inCenter(x, y)) continue;
+          if (!tooClose(x, y)) { placed.push({ x, y }); return { x, y }; }
+        }
+        // Fallback: skirt position ignoring separation
+        for (let t = 0; t < 200; t++) {
+          const x = MARGIN + Math.floor(Math.random() * (228 - MARGIN * 2));
+          const y = MARGIN + Math.floor(Math.random() * (150 - MARGIN * 2));
+          if (!inCenter(x, y)) { placed.push({ x, y }); return { x, y }; }
+        }
+        return { x: MARGIN, y: MARGIN };
+      }
+
+      barrels.push({ ...randPos(MARGIN, 120),         damage: initBarrelDamage() });
+      barrels.push({ ...randPos(120, 228 - MARGIN),   damage: initBarrelDamage() });
+      for (let i = 0; i < 3; i++) tommyPickups.push(skirtPos());
+      for (let i = 0; i < 3; i++) widePickups.push(skirtPos());
+      for (let i = 0; i < 3; i++) longPickups.push(skirtPos());
+      ricPickups.push(skirtPos());
+      potionPickups.push(skirtPos());
+      speedPickups.push(skirtPos());
+      laserPickups.push(skirtPos());
+    })();
+
+    const AI_FADE_FRAMES    = 60;
+    const AI_RECOVER_FRAMES = 180;
+    const AI_SPEED          = 0.55;
+    const AI_MIN_DIST       = 28;
+    const RESPAWN_DELAY     = 120;  // 2 seconds at 60 fps
+
+    const SPAWN_POSITIONS = [
+      { x: 210, y: 51 },  // above damsel
+      { x: 210, y: 90 },  // below damsel
+    ];
+
+    function createAI(x, y) {
+      return {
+        x, y,
+        state:            'alive',
+        fadeAlpha:        1,
+        fadeTick:         0,
+        recoverTick:      0,
+        facingLeft:       true,
+        behaviorState:    'pursue',
+        behaviorTick:     0,
+        behaviorDuration: 120,
+        flankDir:         1,
+        shootCooldown:    60 + Math.floor(Math.random() * 60),
+        stuckTick:        0,
+        deadX:            x,
+        deadY:            y,
+        deadFacing:       true,
+        animFrame:        0,
+        animTick:         0,
+      };
+    }
+
+    function aiHit(a) {
+      if (a.state === 'alive') {
+        a.state       = 'sitting';
+        a.recoverTick = 0;
+        playHit();
+      } else if (a.state === 'sitting') {
+        a.deadX      = a.x;
+        a.deadY      = a.y;
+        a.deadFacing = a.facingLeft;
+        a.state      = 'dying';
+        playDeath();
+        score += 20;
+        killCount++;
+        updateScore();
+        if (killCount < KILLS_PER_LEVEL)
+          respawnQueue.push({ timer: RESPAWN_DELAY, spawnIdx: Math.floor(Math.random() * 2) });
+      }
+    }
+
+    const ais = [
+      createAI(SPAWN_POSITIONS[0].x, SPAWN_POSITIONS[0].y),
+      createAI(SPAWN_POSITIONS[1].x, SPAWN_POSITIONS[1].y),
+    ];
+
+    const respawnQueue  = [];
+    let   gameActivated = false;
+
+    const bombs = [
+      { x:  62, y:  14 },
+      { x: 163, y:  14 },
+      { x:  70, y: 124 },
+    ];
+
+    const explosions      = [];
+    const EXPLODE_FRAMES  = 25;
+    const EXPLODE_MAX_LEN = 72;   // 45% of 160 game-pixel arena height
+
+    const laserBeams   = [];
+    const LASER_FRAMES = 20;
+
+    const turret = {
+      angle:    Math.PI,  // initially pointing left
+      cooldown: 90,       // initial delay before first shot
+      bullet:   null,     // { x, y, dx, dy, dist } — one at a time
+      shrapnel: [],       // active shrapnel pieces
+    };
+
+    // Ray vs AABB — returns distance t along ray to entry point, or -1 if miss
+    function rayAABB(ox, oy, ux, uy, len, xmin, xmax, ymin, ymax) {
+      let tmin = 0, tmax = len;
+      if (Math.abs(ux) > 1e-6) {
+        const t1 = (xmin - ox) / ux, t2 = (xmax - ox) / ux;
+        tmin = Math.max(tmin, Math.min(t1, t2));
+        tmax = Math.min(tmax, Math.max(t1, t2));
+      } else if (ox < xmin || ox > xmax) return -1;
+      if (Math.abs(uy) > 1e-6) {
+        const t1 = (ymin - oy) / uy, t2 = (ymax - oy) / uy;
+        tmin = Math.max(tmin, Math.min(t1, t2));
+        tmax = Math.min(tmax, Math.max(t1, t2));
+      } else if (oy < ymin || oy > ymax) return -1;
+      return tmin <= tmax ? tmin : -1;
+    }
+
+    const smokeParticles = [];
+
+    // ── Audio ────────────────────────────────────────────────────────────────────
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playPew() {
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(700, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.12);
+    }
+
+    function playHit() {
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(220, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(55, audioCtx.currentTime + 0.18);
+      gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.18);
+    }
+
+    function playDeath() {
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(320, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(35, audioCtx.currentTime + 0.9);
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.9);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.9);
+    }
+
+    function playTeleportOut() {
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(480, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.3);
+      gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.3);
+    }
+
+    function playDing() {
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1400, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(900, audioCtx.currentTime + 0.18);
+      gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.18);
+    }
+
+    function playTeleportIn() {
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(960, audioCtx.currentTime + 0.25);
+      gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.18, audioCtx.currentTime + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.25);
+    }
+
+    function playBoom() {
+      const dur    = 0.7;
+      const bufLen = Math.ceil(audioCtx.sampleRate * dur);
+      const buf    = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+      const data   = buf.getChannelData(0);
+      for (let i = 0; i < bufLen; i++)
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufLen, 1.5);
+      const src  = audioCtx.createBufferSource();
+      src.buffer = buf;
+      const filt = audioCtx.createBiquadFilter();
+      filt.type = 'lowpass';
+      filt.frequency.setValueAtTime(300, audioCtx.currentTime);
+      filt.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + dur);
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(1.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+      src.connect(filt);
+      filt.connect(gain);
+      gain.connect(audioCtx.destination);
+      src.start();
+      src.stop(audioCtx.currentTime + dur);
+    }
+
+    function playOof() {
+      const now = audioCtx.currentTime;
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(340, now);
+      osc.frequency.exponentialRampToValueAtTime(160, now + 0.08);
+      osc.frequency.exponentialRampToValueAtTime(75,  now + 0.24);
+      gain.gain.setValueAtTime(0.55, now);
+      gain.gain.linearRampToValueAtTime(0.6, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+      osc.start(now); osc.stop(now + 0.24);
+    }
+
+    function playPlayerDeath() {
+      const now = audioCtx.currentTime;
+      [300, 220, 160, 95].forEach((freq, i) => {
+        const osc  = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.type = 'sawtooth';
+        const t = now + i * 0.22;
+        osc.frequency.setValueAtTime(freq, t);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.5, t + 0.38);
+        gain.gain.setValueAtTime(0.3, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+        osc.start(t); osc.stop(t + 0.42);
+      });
+    }
+
+    function playLaser() {
+      const now = audioCtx.currentTime;
+      const dur = 0.38;
+      // outer sawtooth sweep — descending whoosh
+      const osc1  = audioCtx.createOscillator();
+      const gain1 = audioCtx.createGain();
+      osc1.connect(gain1); gain1.connect(audioCtx.destination);
+      osc1.type = 'sawtooth';
+      osc1.frequency.setValueAtTime(2400, now);
+      osc1.frequency.exponentialRampToValueAtTime(140, now + dur);
+      gain1.gain.setValueAtTime(0.07, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + dur);
+      osc1.start(now); osc1.stop(now + dur);
+      // sine core — brighter mid
+      const osc2  = audioCtx.createOscillator();
+      const gain2 = audioCtx.createGain();
+      osc2.connect(gain2); gain2.connect(audioCtx.destination);
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(1800, now);
+      osc2.frequency.exponentialRampToValueAtTime(300, now + dur);
+      gain2.gain.setValueAtTime(0.12, now);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + dur);
+      osc2.start(now); osc2.stop(now + dur);
+    }
+
+    // Walk footstep — three EQ variants via biquad filter
+    function playStep(type) {
+      const now = audioCtx.currentTime;
+      const dur = 0.055;
+      const bufLen = Math.ceil(audioCtx.sampleRate * dur);
+      const buf  = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < bufLen; i++)
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufLen, 2.5);
+      const src  = audioCtx.createBufferSource();
+      src.buffer = buf;
+      const filt = audioCtx.createBiquadFilter();
+      if (type === 'h') {
+        filt.type = 'highpass';  // horizontal — bright click, hard surface
+        filt.frequency.value = 700;
+      } else if (type === 'v') {
+        filt.type = 'lowpass';   // vertical — heavy thud, dirt/sand
+        filt.frequency.value = 160;
+      } else {
+        filt.type = 'bandpass';  // diagonal — mixed
+        filt.frequency.value = 380;
+        filt.Q.value = 1.0;
+      }
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(0.42, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+      src.connect(filt); filt.connect(gain); gain.connect(audioCtx.destination);
+      src.start(now); src.stop(now + dur + 0.01);
+    }
+
+    // Turret mechanical fire thunk
+    function playTurretFire() {
+      const now = audioCtx.currentTime;
+      const osc  = audioCtx.createOscillator();
+      const filt = audioCtx.createBiquadFilter();
+      const gain = audioCtx.createGain();
+      osc.connect(filt); filt.connect(gain); gain.connect(audioCtx.destination);
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(50, now + 0.15);
+      filt.type = 'lowpass';
+      filt.frequency.setValueAtTime(900, now);
+      gain.gain.setValueAtTime(0.22, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      osc.start(now); osc.stop(now + 0.18);
+    }
+
+    function playFuneralMarch() {
+      // Chopin Op.35 — Funeral March melody, Bb minor, ~52 BPM
+      const now = audioCtx.currentTime;
+      const BPM = 52;
+      const Q   = 60 / BPM;       // quarter note duration
+      const H   = Q * 2;          // half note
+      const DQ  = Q * 1.5;        // dotted quarter
+
+      // Note frequencies (Bb minor)
+      const F = {
+        Bb3: 233.08, C4: 261.63, Db4: 277.18, Eb4: 311.13,
+        F4:  349.23, Gb4: 369.99, Bb4: 466.16,
+      };
+
+      // [freq, duration, offset] — the iconic opening phrase
+      const notes = [
+        [F.Bb3, DQ, 0],
+        [F.Bb3, Q * 0.5, DQ],
+        [F.Bb3, Q, DQ + Q * 0.5],
+        [F.Gb4, DQ, DQ + Q * 1.5],
+        [F.F4,  Q * 0.5, DQ * 2 + Q * 0.5],
+        [F.Eb4, Q, DQ * 2 + Q],
+        [F.Db4, DQ, DQ * 2 + Q * 2],
+        [F.C4,  Q * 0.5, DQ * 3 + Q * 2.5],
+        [F.Db4, H,  DQ * 3 + Q * 3],
+        [F.Bb3, H,  DQ * 3 + Q * 5],
+      ];
+
+      notes.forEach(([freq, dur, offset]) => {
+        const t = now + offset + 0.4;  // 0.4s lead-in pause
+        const noteDur = dur * 0.88;
+
+        // primary sine
+        const osc1  = audioCtx.createOscillator();
+        const gain1 = audioCtx.createGain();
+        osc1.connect(gain1); gain1.connect(audioCtx.destination);
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(freq, t);
+        gain1.gain.setValueAtTime(0, t);
+        gain1.gain.linearRampToValueAtTime(0.22, t + 0.02);
+        gain1.gain.setValueAtTime(0.22, t + noteDur - 0.05);
+        gain1.gain.linearRampToValueAtTime(0, t + noteDur);
+        osc1.start(t); osc1.stop(t + noteDur + 0.01);
+
+        // octave-lower sine for depth
+        const osc2  = audioCtx.createOscillator();
+        const gain2 = audioCtx.createGain();
+        osc2.connect(gain2); gain2.connect(audioCtx.destination);
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(freq * 0.5, t);
+        gain2.gain.setValueAtTime(0, t);
+        gain2.gain.linearRampToValueAtTime(0.10, t + 0.02);
+        gain2.gain.setValueAtTime(0.10, t + noteDur - 0.05);
+        gain2.gain.linearRampToValueAtTime(0, t + noteDur);
+        osc2.start(t); osc2.stop(t + noteDur + 0.01);
+      });
+    }
+
+    // ── Input ────────────────────────────────────────────────────────────────────
+
+    const keys = {};
+    let paused       = false;
+    let prevRTrigger = false;
+    const pauseOverlay = document.getElementById('pause-overlay');
+    function togglePause() {
+      paused = !paused;
+      pauseOverlay.style.display = paused ? 'flex' : 'none';
+    }
+    window.addEventListener('keydown', e => {
+      keys[e.key] = true;
+      if ((e.key === 'p' || e.key === 'P') && !e.repeat) togglePause();
+    });
+    window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+    const startOverlay = document.getElementById('start-overlay');
+    startOverlay.addEventListener('click', () => {
+      audioCtx.resume();
+      startOverlay.style.display = 'none';
+    });
+
+    const STICK_DEAD = 0.15;
+    function getGamepad() {
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (const pad of pads) if (pad) return pad;
+      return null;
+    }
+
+    // ── Update ───────────────────────────────────────────────────────────────────
+
+    function update() {
+      // ── Player death / respawn ────────────────────────────────────────────────────
+      if (player.dying) {
+        player.dyingTimer--;
+        if (player.dyingTimer <= 0) {
+          if (player.lives > 0) {
+            player.dying      = false;
+            player.x          = 40; player.y = 73;
+            player.hp         = 100;
+            player.facingLeft = false;
+            player.animFrame  = 0;
+            player.tpState    = 'idle';
+            player.tpAlpha    = 1;
+            updateHealthBar();
+            resetAIsToRight();
+          }
+          // lives === 0: stay invisible (game over — no loop yet)
+        }
+        // skip all player input while dying, but continue AI/bullet/explosion updates
+      }
+
+      // ── Teleport state machine ───────────────────────────────────────────────────
+      if (player.tpCooldown > 0) player.tpCooldown--;
+
+      if (player.tpState === 'out') {
+        player.tpTimer++;
+        player.tpAlpha = 1 - player.tpTimer / TELEPORT_FRAMES;
+        if (player.tpTimer >= TELEPORT_FRAMES) {
+          const dest  = TELEPORT_PORTALS[player.tpTarget];
+          player.x    = dest.x - 4;
+          player.y    = dest.y - 8;
+          player.tpState = 'in';
+          player.tpTimer = 0;
+          player.tpAlpha = 0;
+          playTeleportIn();
+        }
+      } else if (player.tpState === 'in') {
+        player.tpTimer++;
+        player.tpAlpha = player.tpTimer / TELEPORT_FRAMES;
+        if (player.tpTimer >= TELEPORT_FRAMES) {
+          player.tpState    = 'idle';
+          player.tpAlpha    = 1;
+          player.tpCooldown = TELEPORT_COOLDOWN;
+        }
+      }
+
+      if (player.tpState === 'idle' && !player.dying) {
+        const gp = getGamepad();
+        if (gp && gp.buttons.some(b => b.pressed)) audioCtx.resume();
+
+        // ── Movement ──────────────────────────────────────────────────────────────
+        let dx = 0, dy = 0;
+        if (keys['w'] || keys['W']) dy -= 1;
+        if (keys['s'] || keys['S']) dy += 1;
+        if (keys['a'] || keys['A']) dx -= 1;
+        if (keys['d'] || keys['D']) dx += 1;
+        if (gp) {
+          const ax = gp.axes[0], ay = gp.axes[1];
+          if (Math.abs(ax) > STICK_DEAD) dx = Math.max(-1, Math.min(1, dx + ax));
+          if (Math.abs(ay) > STICK_DEAD) dy = Math.max(-1, Math.min(1, dy + ay));
+        }
+
+        const moving = dx !== 0 || dy !== 0;
+
+        if (moving) {
+          gameActivated = true;
+          const rawDx = dx, rawDy = dy;  // capture for step sound direction
+          const len = Math.sqrt(dx * dx + dy * dy);
+          const spd = SPEED * (speedBoostTimer > 0 ? 1.3 : 1) / Math.SQRT2;
+          dx = (dx / len) * spd;
+          dy = (dy / len) * spd;
+
+          const newX = Math.max(3, Math.min(228, player.x + dx));
+          const newY = Math.max(3, Math.min(143, player.y + dy));
+          if (!playerCollidesWithObstacles(newX, newY)) {
+            player.x = newX; player.y = newY;
+          } else if (!playerCollidesWithObstacles(newX, player.y)) {
+            player.x = newX;
+          } else if (!playerCollidesWithObstacles(player.x, newY)) {
+            player.y = newY;
+          }
+
+          if (dx < 0) player.facingLeft = true;
+          if (dx > 0) player.facingLeft = false;
+
+          player.animTick++;
+          if (player.animTick >= ANIM_RATE) {
+            player.animTick = 0;
+            player.animFrame = player.animFrame === 1 ? 2 : 1;
+            const arx = Math.abs(rawDx), ary = Math.abs(rawDy);
+            const stepType = arx > ary * 1.5 ? 'h' : ary > arx * 1.5 ? 'v' : 'd';
+            playStep(stepType);
+          }
+        } else {
+          player.animFrame = 0;
+          player.animTick  = 0;
+        }
+
+        // ── Teleport trigger ──────────────────────────────────────────────────────
+        if (player.tpCooldown === 0) {
+          const pcx = player.x + 4, pcy = player.y + 8;
+          for (let i = 0; i < TELEPORT_PORTALS.length; i++) {
+            const p = TELEPORT_PORTALS[i];
+            const ddx = pcx - p.x, ddy = pcy - p.y;
+            if (ddx * ddx + ddy * ddy < TELEPORT_TRIGGER) {
+              player.tpState  = 'out';
+              player.tpTimer  = 0;
+              player.tpTarget = i === 0 ? 1 : 0;
+              playTeleportOut();
+              break;
+            }
+          }
+        }
+
+        // ── Tommy gun pickup ──────────────────────────────────────────────────────
+        for (let i = tommyPickups.length - 1; i >= 0; i--) {
+          const tp = tommyPickups[i];
+          if (player.x + 8 > tp.x && player.x + 1 < tp.x + 11 &&
+              player.y + 5 > tp.y && player.y + 13 < tp.y + 14) {
+            tommyPickups.splice(i, 1);
+            weapon    = 'tommy';
+            ammoBoxes = 8;
+            burstShot = 0;
+            updateAmmoMeter();
+            break;
+          }
+        }
+
+        // ── Wide-shot pickup ─────────────────────────────────────────────────────
+        for (let i = widePickups.length - 1; i >= 0; i--) {
+          const wp = widePickups[i];
+          if (player.x + 8 > wp.x && player.x + 1 < wp.x + 10 &&
+              player.y + 5 > wp.y && player.y + 13 < wp.y + 14) {
+            widePickups.splice(i, 1);
+            weapon    = 'wide';
+            ammoBoxes = 8;
+            updateAmmoMeter();
+            break;
+          }
+        }
+
+        // ── Long-shot pickup (L — no ricochet) ───────────────────────────────────
+        for (let i = longPickups.length - 1; i >= 0; i--) {
+          const lp = longPickups[i];
+          if (player.x + 8 > lp.x && player.x + 1 < lp.x + 10 &&
+              player.y + 5 > lp.y && player.y + 13 < lp.y + 14) {
+            longPickups.splice(i, 1);
+            weapon    = 'long';
+            ammoBoxes = 8;
+            updateAmmoMeter();
+            break;
+          }
+        }
+
+        // ── Ricochet pickup (R — long range + splits on wall) ─────────────────────
+        for (let i = ricPickups.length - 1; i >= 0; i--) {
+          const rp = ricPickups[i];
+          if (player.x + 8 > rp.x && player.x + 1 < rp.x + 10 &&
+              player.y + 5 > rp.y && player.y + 13 < rp.y + 14) {
+            ricPickups.splice(i, 1);
+            weapon    = 'ricochet';
+            ammoBoxes = 8;
+            updateAmmoMeter();
+            break;
+          }
+        }
+
+        // ── Healing potion pickup ─────────────────────────────────────────────────
+        for (let i = potionPickups.length - 1; i >= 0; i--) {
+          const pp = potionPickups[i];
+          if (player.x + 8 > pp.x && player.x + 1 < pp.x + 7 &&
+              player.y + 5 > pp.y && player.y + 13 < pp.y + 13) {
+            potionPickups.splice(i, 1);
+            player.hp = 100;
+            updateHealthBar();
+            break;
+          }
+        }
+
+        // ── Speed potion pickup (violet — +30% speed for 30s) ─────────────────────
+        for (let i = speedPickups.length - 1; i >= 0; i--) {
+          const sp = speedPickups[i];
+          if (player.x + 8 > sp.x && player.x + 1 < sp.x + 7 &&
+              player.y + 5 > sp.y && player.y + 13 < sp.y + 13) {
+            speedPickups.splice(i, 1);
+            speedBoostTimer = 1800;  // 30 seconds at 60 fps
+            break;
+          }
+        }
+
+        // ── Laser potion pickup (indigo — 3 piercing shots) ───────────────────────
+        for (let i = laserPickups.length - 1; i >= 0; i--) {
+          const lp = laserPickups[i];
+          if (player.x + 8 > lp.x && player.x + 1 < lp.x + 7 &&
+              player.y + 5 > lp.y && player.y + 13 < lp.y + 13) {
+            laserPickups.splice(i, 1);
+            weapon    = 'laser';
+            ammoBoxes = 3;
+            updateAmmoMeter();
+            break;
+          }
+        }
+
+        // ── Shooting ──────────────────────────────────────────────────────────────
+        let sx = 0, sy = 0;
+        if (keys['ArrowUp'])    sy -= 1;
+        if (keys['ArrowDown'])  sy += 1;
+        if (keys['ArrowLeft'])  sx -= 1;
+        if (keys['ArrowRight']) sx += 1;
+        if (gp) {
+          if (gp.buttons[3].pressed) sy -= 1;  // Y = shoot up
+          if (gp.buttons[0].pressed) sy += 1;  // A = shoot down
+          if (gp.buttons[2].pressed) sx -= 1;  // X = shoot left
+          if (gp.buttons[1].pressed) sx += 1;  // B = shoot right
+          sx = Math.max(-1, Math.min(1, sx));
+          sy = Math.max(-1, Math.min(1, sy));
+          const rx = gp.axes[2] ?? 0, ry = gp.axes[3] ?? 0;
+          if (Math.sqrt(rx * rx + ry * ry) > 0.7) {
+            const snapped = Math.round(Math.atan2(ry, rx) / (Math.PI / 4)) * (Math.PI / 4);
+            sx = Math.round(Math.cos(snapped));
+            sy = Math.round(Math.sin(snapped));
+          }
+        }
+
+        if (sx !== 0 || sy !== 0) {
+          if (fireCooldown <= 0) {
+            gameActivated = true;
+            const len = Math.sqrt(sx * sx + sy * sy);
+            const ndx = (sx / len) * BULLET_SPEED;
+            const ndy = (sy / len) * BULLET_SPEED;
+            const bx  = player.x + 4, by = player.y + 7;
+            if (weapon === 'wide') {
+              bullets.push({ x: bx, y: by, dx: ndx, dy: ndy, dist: 0 });
+              bullets.push({ x: bx, y: by,
+                dx: ndx * COS30 - ndy * SIN30, dy: ndx * SIN30 + ndy * COS30, dist: 0 });
+              bullets.push({ x: bx, y: by,
+                dx: ndx * COS30 + ndy * SIN30, dy: -ndx * SIN30 + ndy * COS30, dist: 0 });
+              ammoBoxes = Math.max(0, ammoBoxes - 1);
+              if (ammoBoxes === 0) weapon = 'default';
+              fireCooldown = FIRE_COOLDOWN;
+              updateAmmoMeter();
+            } else if (weapon === 'long') {
+              bullets.push({ x: bx, y: by, dx: ndx, dy: ndy, dist: 0, range: LONG_BULLET_RANGE });
+              ammoBoxes = Math.max(0, ammoBoxes - 1);
+              if (ammoBoxes === 0) weapon = 'default';
+              fireCooldown = FIRE_COOLDOWN;
+              updateAmmoMeter();
+            } else if (weapon === 'ricochet') {
+              bullets.push({ x: bx, y: by, dx: ndx, dy: ndy, dist: 0, splits: 2, range: LONG_BULLET_RANGE });
+              ammoBoxes = Math.max(0, ammoBoxes - 1);
+              if (ammoBoxes === 0) weapon = 'default';
+              fireCooldown = FIRE_COOLDOWN;
+              updateAmmoMeter();
+            } else if (weapon === 'laser') {
+              const lux = ndx / BULLET_SPEED, luy = ndy / BULLET_SPEED;
+              let llen = 9999;
+              if (lux >  1e-6) llen = Math.min(llen, (236 - bx) / lux);
+              if (lux < -1e-6) llen = Math.min(llen, (bx - 4)   / -lux);
+              if (luy >  1e-6) llen = Math.min(llen, (156 - by) / luy);
+              if (luy < -1e-6) llen = Math.min(llen, (by - 4)   / -luy);
+              // Damage cacti along beam
+              for (let j = cacti.length - 1; j >= 0; j--) {
+                const ca = cacti[j];
+                const t = rayAABB(bx, by, lux, luy, llen,
+                  ca.x, ca.x + CACTUS[0].length * CACTUS_SCALE,
+                  ca.y, ca.y + CACTUS.length    * CACTUS_SCALE);
+                if (t < 0) continue;
+                const hc = Math.max(0, Math.min(CACTUS[0].length - 1, Math.floor((bx + lux * t - ca.x) / CACTUS_SCALE)));
+                const hr = Math.max(0, Math.min(CACTUS.length    - 1, Math.floor((by + luy * t - ca.y) / CACTUS_SCALE)));
+                applyChunk(ca.damage, hc, hr, CHUNK_RADIUS);
+                if (isCactusGone(ca.damage)) cacti.splice(j, 1);
+                playDing();
+              }
+              // Damage barrels along beam
+              for (let j = barrels.length - 1; j >= 0; j--) {
+                const ba = barrels[j];
+                const t = rayAABB(bx, by, lux, luy, llen,
+                  ba.x, ba.x + BARREL[0].length,
+                  ba.y, ba.y + BARREL.length);
+                if (t < 0) continue;
+                const hc = Math.max(0, Math.min(BARREL[0].length - 1, Math.floor(bx + lux * t - ba.x)));
+                const hr = Math.max(0, Math.min(BARREL.length    - 1, Math.floor(by + luy * t - ba.y)));
+                applyChunk(ba.damage, hc, hr, CHUNK_RADIUS);
+                if (isBarrelGone(ba.damage)) barrels.splice(j, 1);
+                playDing();
+              }
+              // Hit AIs along beam
+              for (const a of ais) {
+                if (a.state !== 'alive' && a.state !== 'sitting') continue;
+                const aiH = a.state === 'alive' ? 13 : 8;
+                if (rayAABB(bx, by, lux, luy, llen, a.x + 1, a.x + 7, a.y + 2, a.y + 2 + aiH) >= 0) {
+                  aiHit(a); aiHit(a);  // laser = 2 hits, instant kill
+              }
+              }
+              laserBeams.push({ x: bx, y: by, ux: lux, uy: luy, len: llen, timer: 0 });
+              ammoBoxes = Math.max(0, ammoBoxes - 1);
+              if (ammoBoxes === 0) weapon = 'default';
+              fireCooldown = FIRE_COOLDOWN;
+              updateAmmoMeter();
+              playLaser();
+            } else {
+              bullets.push({ x: bx, y: by, dx: ndx, dy: ndy, dist: 0 });
+              if (weapon === 'tommy') {
+                burstShot++;
+                if (burstShot >= 3) {
+                  burstShot  = 0;
+                  ammoBoxes  = Math.max(0, ammoBoxes - 1);
+                  if (ammoBoxes === 0) weapon = 'default';
+                  fireCooldown = TOMMY_BURST_COOLDOWN;
+                } else {
+                  fireCooldown = TOMMY_SHOT_COOLDOWN;
+                }
+                updateAmmoMeter();
+              } else {
+                fireCooldown = FIRE_COOLDOWN;
+              }
+              playPew();
+            }
+          }
+        } else {
+          if (weapon === 'tommy') burstShot = 0;
+        }
+
+        if (fireCooldown > 0) fireCooldown--;
+        if (speedBoostTimer > 0) speedBoostTimer--;
+      }
+
+      // ── AI movement + shooting ────────────────────────────────────────────────────
+      if (gameActivated) {
+        for (const a of ais) {
+          if (a.state === 'alive') {
+            a.behaviorTick++;
+            if (a.behaviorTick >= a.behaviorDuration) {
+              a.behaviorTick = 0;
+              const r = Math.random();
+              if (r < 0.35) {
+                a.behaviorState    = 'pursue';
+                a.behaviorDuration = 80 + Math.floor(Math.random() * 80);
+              } else if (r < 0.65) {
+                a.behaviorState    = 'flank';
+                a.flankDir         = Math.random() < 0.5 ? 1 : -1;
+                a.behaviorDuration = 60 + Math.floor(Math.random() * 60);
+              } else {
+                a.behaviorState    = 'strafe';
+                a.flankDir         = Math.random() < 0.5 ? 1 : -1;
+                a.behaviorDuration = 50 + Math.floor(Math.random() * 50);
+              }
+            }
+
+            const pdx  = (player.x + 4) - (a.x + 4);
+            const pdy  = (player.y + 7) - (a.y + 7);
+            const dist = Math.sqrt(pdx * pdx + pdy * pdy) || 1;
+            const ux = pdx / dist, uy = pdy / dist;
+
+            let moveX = 0, moveY = 0;
+            if (a.behaviorState === 'pursue') {
+              if (dist > AI_MIN_DIST) { moveX = ux; moveY = uy; }
+            } else if (a.behaviorState === 'flank') {
+              const px = -uy * a.flankDir, py = ux * a.flankDir;
+              const aw = dist > 60 ? 0.35 : 0;
+              moveX = px * 0.85 + ux * aw;
+              moveY = py * 0.85 + uy * aw;
+              const ml = Math.sqrt(moveX * moveX + moveY * moveY) || 1;
+              moveX /= ml; moveY /= ml;
+            } else {
+              const px = -uy * a.flankDir, py = ux * a.flankDir;
+              moveX = px; moveY = py;
+              if      (dist > 60) { moveX += ux * 0.4; moveY += uy * 0.4; }
+              else if (dist < 30) { moveX -= ux * 0.6; moveY -= uy * 0.6; }
+              const ml = Math.sqrt(moveX * moveX + moveY * moveY) || 1;
+              moveX /= ml; moveY /= ml;
+            }
+
+            const prevX = a.x, prevY = a.y;
+            const nax = Math.max(3, Math.min(228, a.x + moveX * AI_SPEED));
+            const nay = Math.max(3, Math.min(143, a.y + moveY * AI_SPEED));
+            if (!playerCollidesWithCacti(nax, nay) && !playerCollidesWithBarrels(nax, nay)) {
+              a.x = nax; a.y = nay;
+            } else if (!playerCollidesWithCacti(nax, a.y) && !playerCollidesWithBarrels(nax, a.y)) {
+              a.x = nax;
+            } else if (!playerCollidesWithCacti(a.x, nay) && !playerCollidesWithBarrels(a.x, nay)) {
+              a.y = nay;
+            }
+
+            if (a.x === prevX && a.y === prevY && (moveX !== 0 || moveY !== 0)) {
+              if (++a.stuckTick > 8) {
+                a.stuckTick     = 0;
+                a.flankDir      = -a.flankDir;
+                a.behaviorState = 'flank';
+                a.behaviorTick  = 0;
+                a.behaviorDuration = 40 + Math.floor(Math.random() * 30);
+              }
+            } else {
+              a.stuckTick = 0;
+            }
+
+            a.facingLeft = pdx < 0;
+
+            // Leg animation when moving
+            if (a.x !== prevX || a.y !== prevY) {
+              if (++a.animTick >= ANIM_RATE) {
+                a.animTick  = 0;
+                a.animFrame = a.animFrame === 1 ? 2 : 1;
+              }
+            } else {
+              a.animFrame = 0;
+              a.animTick  = 0;
+            }
+          }
+
+          if (a.state === 'alive' || a.state === 'sitting') {
+            a.shootCooldown--;
+            if (a.shootCooldown <= 0) {
+              const pdx  = (player.x + 4) - (a.x + 4);
+              const pdy  = (player.y + 7) - (a.y + 7);
+              const dist = Math.sqrt(pdx * pdx + pdy * pdy) || 1;
+              const angle = Math.atan2(pdy, pdx) + (Math.random() - 0.5) * 0.25;
+              bullets.push({
+                x: a.x + 4, y: a.y + 7,
+                dx: Math.cos(angle) * BULLET_SPEED,
+                dy: Math.sin(angle) * BULLET_SPEED,
+                dist: 0, fromAI: true,
+              });
+              playPew();
+              a.shootCooldown = 70 + Math.floor(Math.random() * 40);
+            }
+          }
+        }
+      }
+
+      // ── Move bullets + cactus collision (always runs) ────────────────────────────
+      const splitQueue = [];
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.x    += b.dx;
+        b.y    += b.dy;
+        b.dist += BULLET_SPEED;
+
+        const bRange = b.range || BULLET_RANGE;
+        if (b.dist >= bRange) { bullets.splice(i, 1); continue; }
+
+        if (b.splits > 0) {
+          let rdx = b.dx, rdy = b.dy, wallHit = false;
+          if (b.x < 3)       { b.x = 3;   rdx =  Math.abs(b.dx); wallHit = true; }
+          if (b.x + 2 > 237) { b.x = 235; rdx = -Math.abs(b.dx); wallHit = true; }
+          if (b.y < 3)       { b.y = 3;   rdy =  Math.abs(b.dy); wallHit = true; }
+          if (b.y + 2 > 157) { b.y = 155; rdy = -Math.abs(b.dy); wallHit = true; }
+          if (wallHit) {
+            const spd = Math.sqrt(rdx * rdx + rdy * rdy);
+            const ux = rdx / spd, uy = rdy / spd;
+            const ns = b.splits - 1;
+            const bx = b.x, by = b.y;
+            bullets.splice(i, 1);
+            splitQueue.push({ x: bx, y: by,
+              dx: (ux * COS_DIV - uy * SIN_DIV) * spd,
+              dy: (ux * SIN_DIV + uy * COS_DIV) * spd,
+              dist: 0, splits: ns, range: LONG_BULLET_RANGE });
+            splitQueue.push({ x: bx, y: by,
+              dx: (ux * COS_DIV + uy * SIN_DIV) * spd,
+              dy: (-ux * SIN_DIV + uy * COS_DIV) * spd,
+              dist: 0, splits: ns, range: LONG_BULLET_RANGE });
+            continue;
+          }
+        } else {
+          let wallHit = false;
+          if (b.x < 3)        { b.x = 3;   b.dx =  Math.abs(b.dx); wallHit = true; }
+          if (b.x + 2 > 237)  { b.x = 235; b.dx = -Math.abs(b.dx); wallHit = true; }
+          if (b.y < 3)        { b.y = 3;   b.dy =  Math.abs(b.dy); wallHit = true; }
+          if (b.y + 2 > 157)  { b.y = 155; b.dy = -Math.abs(b.dy); wallHit = true; }
+          if (wallHit && b.noRicochet) { bullets.splice(i, 1); continue; }
+        }
+
+        const bPoints = [[b.x, b.y],[b.x+1, b.y],[b.x, b.y+1],[b.x+1, b.y+1]];
+        let hit = false;
+        outer: for (let j = cacti.length - 1; j >= 0; j--) {
+          const ca = cacti[j];
+          for (const [px, py] of bPoints) {
+            const hitC = Math.floor((px - ca.x) / CACTUS_SCALE);
+            const hitR = Math.floor((py - ca.y) / CACTUS_SCALE);
+            if (hitR >= 0 && hitR < CACTUS.length &&
+                hitC >= 0 && hitC < CACTUS[0].length &&
+                CACTUS[hitR][hitC] !== null && ca.damage[hitR][hitC]) {
+              applyChunk(ca.damage, hitC, hitR, CHUNK_RADIUS);
+              if (isCactusGone(ca.damage)) cacti.splice(j, 1);
+              playDing();
+              hit = true;
+              break outer;
+            }
+          }
+        }
+        if (hit) { bullets.splice(i, 1); continue; }
+
+        // ── Bullet vs barrels ──────────────────────────────────────────────────────
+        outer2: for (let j = barrels.length - 1; j >= 0; j--) {
+          const ba = barrels[j];
+          for (const [bpx, bpy] of bPoints) {
+            const hitC = Math.floor(bpx - ba.x);
+            const hitR = Math.floor(bpy - ba.y);
+            if (hitR >= 0 && hitR < BARREL.length &&
+                hitC >= 0 && hitC < BARREL[0].length &&
+                BARREL[hitR][hitC] !== null && ba.damage[hitR][hitC]) {
+              applyChunk(ba.damage, hitC, hitR, CHUNK_RADIUS);
+              if (isBarrelGone(ba.damage)) barrels.splice(j, 1);
+              playDing();
+              hit = true;
+              break outer2;
+            }
+          }
+        }
+        if (hit) { bullets.splice(i, 1); continue; }
+
+        // ── Bullet vs bombs ────────────────────────────────────────────────────────
+        let bombHit = false;
+        for (let j = bombs.length - 1; j >= 0; j--) {
+          const bm = bombs[j];
+          if (b.x + 2 > bm.x && b.x < bm.x + 7 &&
+              b.y + 2 > bm.y && b.y < bm.y + 10) {
+            explosions.push({ cx: bm.x + 3, cy: bm.y + 5, timer: 0, hitAIs: new Set() });
+            bombs.splice(j, 1);
+            bullets.splice(i, 1);
+            playBoom();
+            bombHit = true;
+            break;
+          }
+        }
+        if (bombHit) continue;
+
+        // ── Bullet vs player (AI bullets only) ───────────────────────────────────
+        if (b.fromAI && player.tpState === 'idle' && !player.dying) {
+          const px = Math.round(player.x), py = Math.round(player.y);
+          if (b.x + 2 > px + 1 && b.x < px + 7 &&
+              b.y + 2 > py + 5  && b.y < py + 14) {
+            bullets.splice(i, 1);
+            player.hp = Math.max(0, player.hp - 20);
+            updateHealthBar();
+            playOof();
+            continue;
+          }
+        }
+
+        // ── Bullet vs AI (player bullets only) ───────────────────────────────────
+        if (!b.fromAI) {
+          let aiHitFlag = false;
+          for (const a of ais) {
+            if (a.state !== 'alive' && a.state !== 'sitting') continue;
+            const aiH = a.state === 'alive' ? 13 : 8;
+            if (b.x + 2 > a.x + 1 && b.x < a.x + 7 &&
+                b.y + 2 > a.y + 2  && b.y < a.y + 2 + aiH) {
+              aiHit(a);
+              aiHitFlag = true;
+              break;
+            }
+          }
+          if (aiHitFlag) { bullets.splice(i, 1); continue; }
+        }
+      }
+      if (splitQueue.length) bullets.push(...splitQueue);
+
+      // ── AI state machine ──────────────────────────────────────────────────────────
+      for (const a of ais) {
+        if (a.state === 'sitting') {
+          if (++a.recoverTick >= AI_RECOVER_FRAMES) {
+            a.state       = 'alive';
+            a.recoverTick = 0;
+          }
+        } else if (a.state === 'dying') {
+          a.fadeTick++;
+          a.fadeAlpha = 1 - a.fadeTick / AI_FADE_FRAMES;
+          if (a.fadeTick >= AI_FADE_FRAMES) { a.state = 'dead'; a.fadeAlpha = 0; }
+        }
+      }
+
+      // ── Respawn queue ─────────────────────────────────────────────────────────────
+      for (let i = respawnQueue.length - 1; i >= 0; i--) {
+        if (--respawnQueue[i].timer <= 0) {
+          const sp = SPAWN_POSITIONS[respawnQueue[i].spawnIdx];
+          ais.push(createAI(sp.x, sp.y));
+          respawnQueue.splice(i, 1);
+        }
+      }
+
+      // ── Explosion beam advance + AI kill + smoke spawn ────────────────────────────
+      for (let i = explosions.length - 1; i >= 0; i--) {
+        const ex      = explosions[i];
+        ex.timer++;
+        const beamLen = (ex.timer / EXPLODE_FRAMES) * EXPLODE_MAX_LEN;
+
+        const beams = [
+          { x1: ex.cx,           y1: ex.cy - 1, x2: ex.cx + beamLen, y2: ex.cy + 2 },
+          { x1: ex.cx - beamLen, y1: ex.cy - 1, x2: ex.cx,           y2: ex.cy + 2 },
+          { x1: ex.cx - 1,       y1: ex.cy,     x2: ex.cx + 2,       y2: ex.cy + beamLen },
+          { x1: ex.cx - 1,       y1: ex.cy - beamLen, x2: ex.cx + 2, y2: ex.cy },
+        ];
+        for (const a of ais) {
+          if (ex.hitAIs.has(a) || (a.state !== 'alive' && a.state !== 'sitting')) continue;
+          const aiH = a.state === 'alive' ? 13 : 8;
+          const aiL = a.x + 1, aiR = a.x + 7;
+          const aiT = a.y + 2, aiB = a.y + 2 + aiH;
+          for (const beam of beams) {
+            if (beam.x1 < aiR && beam.x2 > aiL && beam.y1 < aiB && beam.y2 > aiT) {
+              ex.hitAIs.add(a);
+              aiHit(a); aiHit(a);  // beam = 2 hits, instant kill
+              break;
+            }
+          }
+        }
+
+        // Smoke — 2 particles per beam direction per frame, drifting perpendicular
+        const dirs = [
+          { dx: 1,  dy: 0, len: Math.min(beamLen, 237 - ex.cx) },
+          { dx: -1, dy: 0, len: Math.min(beamLen, ex.cx - 3)   },
+          { dx: 0,  dy: 1, len: Math.min(beamLen, 157 - ex.cy) },
+          { dx: 0,  dy: -1, len: Math.min(beamLen, ex.cy - 3)  },
+        ];
+        for (const d of dirs) {
+          if (d.len <= 0) continue;
+          for (let k = 0; k < 2; k++) {
+            const along = Math.random() * d.len;
+            const side  = Math.random() > 0.5 ? 1 : -1;
+            const px    = ex.cx + d.dx * along + (d.dx === 0 ? side * (1 + Math.random()) : 0);
+            const py    = ex.cy + d.dy * along + (d.dy === 0 ? side * (1 + Math.random()) : 0);
+            const vx    = d.dx === 0 ? side * 0.25 + (Math.random() - 0.5) * 0.1 : (Math.random() - 0.5) * 0.15;
+            const vy    = d.dy === 0 ? side * 0.25 + (Math.random() - 0.5) * 0.1 : (Math.random() - 0.5) * 0.15;
+            smokeParticles.push({ x: px, y: py, vx, vy, life: 20 + Math.random() * 15, maxLife: 35 });
+          }
+        }
+
+        if (ex.timer >= EXPLODE_FRAMES) explosions.splice(i, 1);
+      }
+
+      // Laser beam fade-out
+      for (let i = laserBeams.length - 1; i >= 0; i--)
+        if (++laserBeams[i].timer >= LASER_FRAMES) laserBeams.splice(i, 1);
+
+      // ── Smoke particle update ──────────────────────────────────────────────────────
+      for (let i = smokeParticles.length - 1; i >= 0; i--) {
+        const p = smokeParticles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life--;
+        if (p.life <= 0) smokeParticles.splice(i, 1);
+      }
+
+      // ── Turret update ───────────────────────────────────────────────────────────────
+      const playerInRange = !player.dying && gameActivated && (player.x + 4) < TURRET_ACTIVE_X;
+
+      if (playerInRange) {
+        const tdx = (player.x + 4) - TURRET_CX;
+        const tdy = (player.y + 7) - TURRET_CY;
+        turret.angle = Math.atan2(tdy, tdx);
+
+        if (turret.bullet === null) {
+          if (--turret.cooldown <= 0) {
+            turret.bullet = {
+              x: TURRET_CX, y: TURRET_CY,
+              dx: Math.cos(turret.angle) * TURRET_BULLET_SPEED,
+              dy: Math.sin(turret.angle) * TURRET_BULLET_SPEED,
+              dist: 0,
+            };
+            turret.cooldown = TURRET_COOLDOWN;
+            playTurretFire();
+          }
+        }
+      }
+
+      // Move turret bullet
+      if (turret.bullet) {
+        const tb = turret.bullet;
+        tb.x += tb.dx;
+        tb.y += tb.dy;
+        tb.dist += TURRET_BULLET_SPEED;
+
+        let explode = false;
+        if (tb.x < 3 || tb.x > 237 || tb.y < 3 || tb.y > 157) explode = true;
+        if (tb.dist >= TURRET_RANGE) explode = true;
+
+        if (!player.dying && player.tpState === 'idle') {
+          const px = Math.round(player.x), py = Math.round(player.y);
+          if (tb.x + 2 > px + 1 && tb.x < px + 7 && tb.y + 2 > py + 5 && tb.y < py + 14) {
+            player.hp = Math.max(0, player.hp - 20);
+            updateHealthBar();
+            playOof();
+            explode = true;
+          }
+        }
+
+        if (explode) {
+          // Spawn 8-directional shrapnel
+          for (let d = 0; d < 8; d++) {
+            const sa = d * Math.PI / 4;
+            turret.shrapnel.push({
+              x: tb.x, y: tb.y,
+              dx: Math.cos(sa) * TURRET_BULLET_SPEED,
+              dy: Math.sin(sa) * TURRET_BULLET_SPEED,
+              dist: 0,
+            });
+          }
+          playBoom();
+          turret.bullet = null;
+        }
+      }
+
+      // Move shrapnel
+      for (let i = turret.shrapnel.length - 1; i >= 0; i--) {
+        const sh = turret.shrapnel[i];
+        sh.x += sh.dx;
+        sh.y += sh.dy;
+        sh.dist += TURRET_BULLET_SPEED;
+
+        if (sh.dist >= SHRAPNEL_RANGE || sh.x < 3 || sh.x > 237 || sh.y < 3 || sh.y > 157) {
+          turret.shrapnel.splice(i, 1);
+          continue;
+        }
+
+        if (!player.dying && player.tpState === 'idle') {
+          const px = Math.round(player.x), py = Math.round(player.y);
+          if (sh.x + 2 > px + 1 && sh.x < px + 7 && sh.y + 2 > py + 5 && sh.y < py + 14) {
+            player.hp = Math.max(0, player.hp - 10);
+            updateHealthBar();
+            playOof();
+            turret.shrapnel.splice(i, 1);
+          }
+        }
+      }
+    }
+
+    // ── Teleportation circle ─────────────────────────────────────────────────────
+    // Concentric pixel rings — muted/dim teal-blue, unobtrusive.
+
+    function drawTeleport(gcx, gcy) {
+      for (let dy = -9; dy <= 9; dy++) {
+        for (let dx = -9; dx <= 9; dx++) {
+          const d2 = dx * dx + dy * dy;
+          if      (d2 >= 64 && d2 <= 81) dot(gcx + dx, gcy + dy, '#3E788C'); // outer ring
+          else if (d2 >= 36 && d2 <= 49) dot(gcx + dx, gcy + dy, '#34708A'); // mid ring
+          else if (d2 >= 16 && d2 <= 25) dot(gcx + dx, gcy + dy, '#5A96A8'); // inner ring
+          else if (d2 <  16)             dot(gcx + dx, gcy + dy, '#4E869B'); // soft centre
+        }
+      }
+    }
+
+    // Pixel-art digit "3" — 3 × 5
+    function drawDigit3(gx, gy, color) {
+      dot(gx,   gy,   color); dot(gx+1, gy,   color); dot(gx+2, gy,   color); // ###
+                                                        dot(gx+2, gy+1, color); //   #
+                               dot(gx+1, gy+2, color); dot(gx+2, gy+2, color); //  ##
+                                                        dot(gx+2, gy+3, color); //   #
+      dot(gx,   gy+4, color); dot(gx+1, gy+4, color); dot(gx+2, gy+4, color); // ###
+    }
+
+    // Wide-shot power-up: vertical bullet + "3" label to the right
+    function drawWideShotPU(gx, gy) {
+      drawSprite(BULLET_PU, PAL_BULLET, gx, gy);
+      drawDigit3(gx + 6, gy + 3, '#FFEE44');
+    }
+
+    // Long-shot power-up: green bullet + "L" label to the right
+    function drawDigitL(gx, gy, color) {
+      dot(gx, gy,   color);                                              // #
+      dot(gx, gy+1, color);                                              // #
+      dot(gx, gy+2, color);                                              // #
+      dot(gx, gy+3, color);                                              // #
+      dot(gx, gy+4, color); dot(gx+1, gy+4, color); dot(gx+2, gy+4, color); // ###
+    }
+
+    function drawLongShotPU(gx, gy) {
+      drawSprite(BULLET_PU, PAL_BULLET_LONG, gx, gy);
+      drawDigitL(gx + 6, gy + 3, '#44FF44');
+    }
+
+    function drawDigitR(gx, gy, color) {
+      dot(gx,   gy,   color); dot(gx+1, gy,   color);                           // ##.
+      dot(gx,   gy+1, color);                          dot(gx+2, gy+1, color);  // #.#
+      dot(gx,   gy+2, color); dot(gx+1, gy+2, color);                           // ##.
+      dot(gx,   gy+3, color);                          dot(gx+2, gy+3, color);  // #.#
+      dot(gx,   gy+4, color);                          dot(gx+2, gy+4, color);  // #.#
+    }
+
+    function drawRicochetPU(gx, gy) {
+      drawSprite(BULLET_PU, PAL_BULLET_RIC, gx, gy);
+      drawDigitR(gx + 6, gy + 3, '#FF8800');
+    }
+
+    // ── Pixel font ───────────────────────────────────────────────────────────────
+
+    const PIXEL_FONT = {
+      'R': ['##.','#.#','##.','#.#','#.#'],
+      'O': ['###','#.#','#.#','#.#','###'],
+      'U': ['#.#','#.#','#.#','#.#','###'],
+      'N': ['#.#','##.','#.#','#.#','#.#'],
+      'D': ['##.','#.#','#.#','#.#','##.'],
+      ' ': ['..','..','..','..','..'],
+      '1': ['##.','.#.','.#.','.#.','###'],
+    };
+
+    function drawPixelText(text, sx, sy, color, ps) {
+      ctx.fillStyle = color;
+      let cx = sx;
+      for (const ch of text) {
+        const glyph = PIXEL_FONT[ch] || PIXEL_FONT[' '];
+        for (let r = 0; r < glyph.length; r++)
+          for (let c = 0; c < glyph[r].length; c++)
+            if (glyph[r][c] === '#')
+              ctx.fillRect(cx + c * ps, sy + r * ps, ps, ps);
+        cx += (glyph[0].length + 1) * ps;
+      }
+    }
+
+    function pixelTextWidth(text, ps) {
+      let w = 0;
+      for (let i = 0; i < text.length; i++) {
+        const glyph = PIXEL_FONT[text[i]] || PIXEL_FONT[' '];
+        w += (glyph[0].length + (i < text.length - 1 ? 1 : 0)) * ps;
+      }
+      return w;
+    }
+
+    // ── Turret drawing ───────────────────────────────────────────────────────────
+
+    function drawTurret(angle) {
+      const cx = TURRET_CX, cy = TURRET_CY;
+      // Octagonal body: 11 wide × 9 tall, chamfered corners
+      const chamfers = [3, 2, 1, 0, 0, 0, 1, 2, 3];
+      const W = 11, H = 9;
+      const ox = cx - 5, oy = cy - 4;
+      for (let r = 0; r < H; r++) {
+        const ch = chamfers[r];
+        const prevCh = r > 0     ? chamfers[r - 1] : ch;
+        const nextCh = r < H - 1 ? chamfers[r + 1] : ch;
+        for (let c = ch; c < W - ch; c++) {
+          const isEdge = c === ch || c === W - 1 - ch || r === 0 || r === H - 1 ||
+                         c === prevCh || c === W - 1 - prevCh ||
+                         c === nextCh || c === W - 1 - nextCh;
+          dot(ox + c, oy + r, isEdge ? '#155515' : '#2A8C2A');
+        }
+      }
+      // Barrel — extends outward from center toward aim angle, 2px thick
+      const perp = angle + Math.PI / 2;
+      const px = Math.cos(perp) * 0.6, py = Math.sin(perp) * 0.6;
+      for (let t = 4; t <= 9; t++) {
+        const bx = cx + Math.cos(angle) * t;
+        const by = cy + Math.sin(angle) * t;
+        dot(Math.round(bx + px), Math.round(by + py), '#155515');
+        dot(Math.round(bx - px), Math.round(by - py), '#155515');
+      }
+      // Cyan dome — oval in center
+      for (const [qx, qy] of [[cx-1,cy-1],[cx+1,cy-1],[cx-1,cy+1],[cx+1,cy+1]])
+        dot(qx, qy, '#1A9090');
+      dot(cx - 1, cy,     '#44DDDD');
+      dot(cx + 1, cy,     '#44DDDD');
+      dot(cx,     cy - 1, '#44DDDD');
+      dot(cx,     cy + 1, '#44DDDD');
+      dot(cx,     cy,     '#88FFFF');  // specular highlight
+    }
+
+    // ── Arena ────────────────────────────────────────────────────────────────────
+
+    function drawArena() {
+      const W = 240, H = 160;
+
+      // Flat arena floor — top-down, no horizon, no ground plane
+      grect(0, 0, W, H, '#8B6B20');
+
+      // Subtle scatter texture
+      for (let x = 4; x < W - 4; x += 4) {
+        for (let y = 4; y < H - 4; y += 4) {
+          if ((x * 11 + y *  7) % 23 < 2) dot(x, y, '#7A5C18');
+          if ((x *  5 + y * 13) % 29 < 1) dot(x, y, '#9A7A28');
+        }
+      }
+
+      // Outer boundary fence
+      const PLANK = '#8B5C28', RAIL = '#6B4418', POST = '#3B2208';
+
+      grect(0,     0, W, 3, PLANK); grect(0, 1, W, 1, RAIL); grect(0, 2, W, 1, POST); // top
+      grect(0, H-3, W, 3, PLANK); grect(0, H-2, W, 1, RAIL); grect(0, H-1, W, 1, POST); // bottom
+      grect(0,     0, 3, H, PLANK); grect(1, 0, 1, H, RAIL); grect(2, 0, 1, H, POST); // left
+      grect(W-3,   0, 3, H, PLANK); grect(W-2, 0, 1, H, RAIL); grect(W-1, 0, 1, H, POST); // right
+
+      for (let x = 0; x <= W - 3; x += 20) {
+        grect(x, 0, 3, 4, POST); dot(x, 0, PLANK); dot(x+1, 0, PLANK);
+        grect(x, H-4, 3, 4, POST); dot(x, H-1, PLANK); dot(x+1, H-1, PLANK);
+      }
+      for (let y = 0; y <= H - 3; y += 20) {
+        grect(0, y, 4, 3, POST);
+        grect(W-4, y, 4, 3, POST);
+      }
+    }
+
+    // ── Render ───────────────────────────────────────────────────────────────────
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawArena();
+
+      // Teleportation circles
+      drawTeleport(13, 147);
+      drawTeleport(227, 13);
+
+      // Cacti — rendered with live damage masks
+      for (const ca of cacti)
+        drawSprite(CACTUS, PAL_CACTUS, ca.x, ca.y, false, CACTUS_SCALE, ca.damage);
+
+      // Barrels — degrade when shot, block movement
+      for (const ba of barrels)
+        drawSprite(BARREL, PAL_BARREL, ba.x, ba.y, false, 1, ba.damage);
+
+      // Bombs (shoot to detonate)
+      for (const bm of bombs)
+        drawSprite(DYNAMITE, PAL_DYNAMITE, bm.x, bm.y);
+
+      // Turret
+      drawTurret(turret.angle);
+
+      // Tommy gun power-ups
+      for (const tp of tommyPickups)
+        drawSprite(TOMMY, PAL_TOMMY, tp.x, tp.y);
+
+      // Wide-shot power-ups
+      for (const wp of widePickups)
+        drawWideShotPU(wp.x, wp.y);
+
+      // Long-shot power-ups (L — no ricochet)
+      for (const lp of longPickups)
+        drawLongShotPU(lp.x, lp.y);
+
+      // Ricochet power-ups (R — splits on wall)
+      for (const rp of ricPickups)
+        drawRicochetPU(rp.x, rp.y);
+
+      // Healing potion (green)
+      for (const pp of potionPickups)
+        drawSprite(POTION, PAL_POTION, pp.x, pp.y);
+
+      // Speed potion (violet)
+      for (const sp of speedPickups)
+        drawSprite(POTION, PAL_SPEED_POTION, sp.x, sp.y);
+
+      // Laser potion (indigo)
+      for (const lp of laserPickups)
+        drawSprite(POTION, PAL_LASER_POTION, lp.x, lp.y);
+
+      // Bullets
+      for (const b of bullets) {
+        ctx.fillStyle = b.fromAI ? '#FF6644' : '#FFFFFF';
+        ctx.fillRect(Math.round(b.x) * S, Math.round(b.y) * S, 2 * S, 2 * S);
+      }
+
+      // Turret bullet (large cyan round) + shrapnel (small orange)
+      if (turret.bullet) {
+        ctx.fillStyle = '#44FFEE';
+        ctx.fillRect(Math.round(turret.bullet.x) * S - S, Math.round(turret.bullet.y) * S - S, 3 * S, 3 * S);
+      }
+      for (const sh of turret.shrapnel) {
+        ctx.fillStyle = '#FF8800';
+        ctx.fillRect(Math.round(sh.x) * S, Math.round(sh.y) * S, S, S);
+      }
+
+      // Smoke particles
+      for (const p of smokeParticles) {
+        ctx.globalAlpha = Math.min((p.life / p.maxLife) * 0.65, 0.65);
+        ctx.fillStyle = p.life / p.maxLife > 0.5 ? '#999999' : '#555555';
+        ctx.fillRect(Math.round(p.x) * S, Math.round(p.y) * S, S, S);
+      }
+      ctx.globalAlpha = 1;
+
+      // Explosions — 4-directional beams fading outward
+      for (const ex of explosions) {
+        const t        = ex.timer / EXPLODE_FRAMES;
+        const rawLen   = t * EXPLODE_MAX_LEN;
+        const rightLen = Math.min(rawLen, 237 - ex.cx);
+        const leftLen  = Math.min(rawLen, ex.cx - 3);
+        const downLen  = Math.min(rawLen, 157 - ex.cy);
+        const upLen    = Math.min(rawLen, ex.cy - 3);
+        ctx.globalAlpha = Math.max(0, 1 - t * 0.7);
+        // Outer orange beams (3px wide)
+        ctx.fillStyle = '#FF6600';
+        if (rightLen > 0) ctx.fillRect( ex.cx              * S, (ex.cy - 1) * S, rightLen * S, 3 * S);
+        if (leftLen  > 0) ctx.fillRect((ex.cx - leftLen)   * S, (ex.cy - 1) * S, leftLen  * S, 3 * S);
+        if (downLen  > 0) ctx.fillRect((ex.cx - 1)         * S,  ex.cy       * S, 3 * S, downLen * S);
+        if (upLen    > 0) ctx.fillRect((ex.cx - 1)         * S, (ex.cy - upLen) * S, 3 * S, upLen * S);
+        // Bright yellow core (1px)
+        ctx.fillStyle = '#FFFF88';
+        if (rightLen > 0) ctx.fillRect( ex.cx              * S,  ex.cy       * S, rightLen * S, S);
+        if (leftLen  > 0) ctx.fillRect((ex.cx - leftLen)   * S,  ex.cy       * S, leftLen  * S, S);
+        if (downLen  > 0) ctx.fillRect( ex.cx              * S,  ex.cy       * S, S, downLen * S);
+        if (upLen    > 0) ctx.fillRect( ex.cx              * S, (ex.cy - upLen) * S, S, upLen * S);
+        // Center flash (shrinks over time)
+        const flashR = Math.round((1 - t) * 5);
+        if (flashR > 0) {
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect((ex.cx - flashR) * S, (ex.cy - flashR) * S, flashR * 2 * S, flashR * 2 * S);
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // Laser beams — directional, wall-to-wall, purple
+      for (const lb of laserBeams) {
+        const t = lb.timer / LASER_FRAMES;
+        ctx.globalAlpha = Math.max(0, 1 - t * 0.75);
+        ctx.save();
+        ctx.translate(lb.x * S, lb.y * S);
+        ctx.rotate(Math.atan2(lb.uy, lb.ux));
+        ctx.fillStyle = '#7711BB';   // outer purple beam (3px wide)
+        ctx.fillRect(0, -1.5 * S, lb.len * S, 3 * S);
+        ctx.fillStyle = '#EE88FF';   // bright pink core (1px)
+        ctx.fillRect(0, -0.5 * S, lb.len * S, S);
+        ctx.restore();
+        ctx.globalAlpha = 1;
+      }
+
+      // Damsel — standing (13px tall; y aligns feet with arena bottom)
+      drawSprite(DAMSEL, PAL_DAMSEL, 223, 71);  // y=71 → feet at 87, matches cowboy baseline
+
+      // AI cowboys
+      for (const a of ais) {
+        if (a.state === 'dead') continue;
+        ctx.globalAlpha = a.fadeAlpha;
+        const ax = Math.round(a.x), ay = Math.round(a.y);
+        if      (a.state === 'alive')   drawSprite(COWBOY_FRAMES[a.animFrame], PAL_P2, ax, ay, a.facingLeft);
+        else if (a.state === 'sitting') drawSprite(COWBOY_SIT,  PAL_P2, ax, ay, a.facingLeft);
+        else                            drawSprite(COWBOY_DEAD, PAL_P2, Math.round(a.deadX), Math.round(a.deadY), a.deadFacing);
+        ctx.globalAlpha = 1;
+      }
+
+      // Player 1 — animated (fades during teleport or death)
+      const deathAlpha = player.dying ? player.dyingTimer / PLAYER_RESPAWN_FRAMES : 1;
+      ctx.globalAlpha = player.tpAlpha * deathAlpha;
+      drawSprite(COWBOY_FRAMES[player.animFrame], PAL_P1,
+                 Math.round(player.x), Math.round(player.y),
+                 player.facingLeft);
+      if (weapon === 'tommy') {
+        const hx = player.facingLeft
+          ? Math.round(player.x) - 5
+          : Math.round(player.x) + 7;
+        drawSprite(TOMMY_HAND, PAL_TOMMY, hx, Math.round(player.y) + 6, player.facingLeft);
+      }
+      ctx.globalAlpha = 1;
+
+      // HUD — round label (chunky pixel font, gold drop shadow, dark red)
+      const ps = 6;
+      const tw = pixelTextWidth('ROUND 1', ps);
+      const sx = canvas.width  - tw - 3 * S - 8;
+      const sy = 157 * S - 7 * ps - 8;
+      drawPixelText('ROUND 1', sx + 3, sy + 3, '#FFD700', ps);
+      drawPixelText('ROUND 1', sx,     sy,     '#8B0000', ps);
+    }
+
+    // ── Ammo meter ───────────────────────────────────────────────────────────────
+
+    const ammoMeterEl = document.getElementById('ammo-meter');
+    const ammoBoxEls  = [];
+    for (let i = 0; i < 8; i++) {
+      const box = document.createElement('div');
+      box.style.cssText = 'width:24px;height:44px;background:#555555;border:2px solid #888888;border-radius:3px;';
+      ammoMeterEl.appendChild(box);
+      ammoBoxEls.push(box);
+    }
+
+    function updateHealthBar() {
+      document.getElementById('health-fill').style.height = player.hp + '%';
+      if (player.hp <= 0 && !player.dying) triggerPlayerDeath();
+    }
+
+    function updateHearts() {
+      const spans = document.getElementById('hearts').children;
+      for (let i = 0; i < 3; i++)
+        spans[i].style.color = i < player.lives ? '#CC2222' : '#333333';
+    }
+
+    function updateScore() {
+      document.getElementById('score-display').textContent =
+        `SCORE ${score}   ${killCount}/${KILLS_PER_LEVEL}`;
+    }
+
+    function resetAIsToRight() {
+      ais.length = 0;
+      respawnQueue.length = 0;
+      ais.push(createAI(SPAWN_POSITIONS[0].x, SPAWN_POSITIONS[0].y));
+      ais.push(createAI(SPAWN_POSITIONS[1].x, SPAWN_POSITIONS[1].y));
+    }
+
+    function triggerPlayerDeath() {
+      player.dying     = true;
+      player.dyingTimer = PLAYER_RESPAWN_FRAMES;
+      player.lives      = Math.max(0, player.lives - 1);
+      updateHearts();
+      playPlayerDeath();
+      if (player.lives === 0) {
+        playFuneralMarch();
+        document.getElementById('game-over-overlay').style.display = 'flex';
+      }
+    }
+
+    function updateAmmoMeter() {
+      const active = weapon !== 'default';
+      for (let i = 0; i < 8; i++) {
+        const filled = i < ammoBoxes;
+        let bg, border;
+        if (!filled)                    { bg = '#1a1a1a'; border = '#333333'; }
+        else if (!active)               { bg = '#555555'; border = '#888888'; }
+        else if (weapon === 'laser')    { bg = '#7700CC'; border = '#CC44FF'; }
+        else                            { bg = '#CC2222'; border = '#FF5555'; }
+        ammoBoxEls[i].style.background  = bg;
+        ammoBoxEls[i].style.borderColor = border;
+      }
+    }
+    updateAmmoMeter();
+
+    // ── Game loop ────────────────────────────────────────────────────────────────
+
+    function loop() {
+      const gp = getGamepad();
+      const rtNow = !!(gp && (
+        (gp.buttons[7] && gp.buttons[7].pressed)   ||  // RT as digital button
+        (gp.axes.length > 5 && gp.axes[5] > 0.5)   ||  // RT as analog axis
+        (gp.buttons[9] && gp.buttons[9].pressed)        // Start / Menu
+      ));
+      if (rtNow && !prevRTrigger) togglePause();
+      prevRTrigger = rtNow;
+
+      if (!paused) update();
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
