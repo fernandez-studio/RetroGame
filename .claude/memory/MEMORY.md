@@ -1,5 +1,8 @@
 # Memory Index
 
+- [Next steps — gunslinger_06](next_steps.md) — pending turret fixes + 360° rotation, implement tomorrow
+- ["next steps" keyword](feedback_next_steps.md) — when Bryan types "next steps", list items from next_steps.md
+
 - [OK FERNAND - Gunslinger Game](project_ok_fernand.md) — full game state: AI system, power-ups, what's built, what's not
 - [Sprite sizing rule](feedback_sprite_sizing.md) — all humanoid sprites must match cowboy dimensions (9×14); never downscale characters
 - [Auto-commit and memory saves](feedback_auto_commit.md) — commit + save memory automatically after features work, don't wait for user to ask

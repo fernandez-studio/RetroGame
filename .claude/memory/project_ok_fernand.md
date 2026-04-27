@@ -8,7 +8,7 @@ type: project
 **GitHub:** username `fernandez-studio`, repo `https://github.com/fernandez-studio/RetroGame`
 Working directory `W:\Visual\Claude\Gunslinger` is initialized as a git repo, remote set to RetroGame, branch `main`.
 
-**Current file:** `gunslinger_03.html` (committed to main)
+**Current file:** `gunslinger_05.html` (committed to main)
 
 **Tech:** Vanilla JS, HTML5 Canvas, no libraries. Arena is 240×160 game pixels, scaled 6x (S=6) to 1440×960 screen pixels.
 
@@ -40,6 +40,13 @@ Working directory `W:\Visual\Claude\Gunslinger` is initialized as a git repo, re
 - Laser beam rendering: canvas ctx.save/translate/rotate/restore, purple outer + pink core, fades over LASER_FRAMES=20
 - No power-ups/potions overlap each other or obstacles (rejection sampling, 600 attempts)
 - Game-over on 3rd death: 50% dim overlay + "YOU FAILED YOUR DAUGHTER" text + Chopin Funeral March melody
+- Turret (green octagonal body + cyan dome) at (207, 79), in front of damsel. Only activates when player.x+4 < 120 (near/left half). Single bullet at a time (TURRET_RANGE=108px = 45% of 240). On wall/range/player hit: 8-directional shrapnel, each 12px range (5%). Barrel rotates to aim. playTurretFire() mechanical thunk.
+- Turret has hp=8; player bullets hit it (hitbox TURRET_CX±5, TURRET_CY±4); body color interpolates green→red per hit; smoke emits when hp≤2; dead=true stops all turret behavior.
+- Countdown (3-2-1 + "Save your daughter!") with beeps after click/space; countdown=-1 before start, 3/2/1 counting, 0=play.
+- Game-over drawn on canvas center (not HTML div). gameOver=true freezes loop.
+- Win condition: turret.dead && killCount≥15 → gameWon=true, pink bobbing heart above damsel, playWinMelody() C-major arpeggio.
+- Walk footstep sounds: 3 EQ variants — highpass (horizontal), lowpass (vertical), bandpass (diagonal). Triggered on leg frame change via playStep(type).
+- AI leg animation: animFrame/animTick added to createAI(), COWBOY_FRAMES driven same as player when alive.
 
 **AI system (ais[] array):**
 - 2 AI cowboys spawn above (210,51) and below (210,90) the damsel at round start
